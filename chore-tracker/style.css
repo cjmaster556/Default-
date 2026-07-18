@@ -1,63 +1,101 @@
 :root {
-  --bg: #f5f6f8;
-  --surface: #ffffff;
-  --text: #1c1e21;
-  --muted: #6b7280;
-  --accent: #3b82f6;
-  --danger: #ef4444;
-  --overdue-bg: #fef2f2;
-  --overdue-border: #fecaca;
-  --today-bg: #fff7ed;
-  --today-border: #fed7aa;
-  --ok-border: #e5e7eb;
-  --radius: 14px;
+  --bg: #edebe2;
+  --surface: #faf9f4;
+  --ink: #23241e;
+  --muted: #74766a;
+  --border: #dad6c8;
+  --accent: #3c6b52;
+  --accent-contrast: #ffffff;
+  --overdue: #b34428;
+  --today: #b07e2e;
+  --focus: #3c6b52;
+  --radius: 10px;
+  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #121316;
-    --surface: #1c1e22;
-    --text: #f0f1f3;
-    --muted: #9aa0a6;
-    --accent: #5b9cf6;
-    --danger: #f87171;
-    --overdue-bg: #2a1616;
-    --overdue-border: #5b2323;
-    --today-bg: #2a2013;
-    --today-border: #5a4520;
-    --ok-border: #2e3136;
+    --bg: #1b1c17;
+    --surface: #232620;
+    --ink: #ece9dd;
+    --muted: #9b9c8a;
+    --border: #34362c;
+    --accent: #6fb08c;
+    --accent-contrast: #12231a;
+    --overdue: #e07850;
+    --today: #e0b45e;
+    --focus: #6fb08c;
   }
+}
+
+:root[data-theme="dark"] {
+  --bg: #1b1c17;
+  --surface: #232620;
+  --ink: #ece9dd;
+  --muted: #9b9c8a;
+  --border: #34362c;
+  --accent: #6fb08c;
+  --accent-contrast: #12231a;
+  --overdue: #e07850;
+  --today: #e0b45e;
+  --focus: #6fb08c;
+}
+
+:root[data-theme="light"] {
+  --bg: #edebe2;
+  --surface: #faf9f4;
+  --ink: #23241e;
+  --muted: #74766a;
+  --border: #dad6c8;
+  --accent: #3c6b52;
+  --accent-contrast: #ffffff;
+  --overdue: #b34428;
+  --today: #b07e2e;
+  --focus: #3c6b52;
 }
 
 * { box-sizing: border-box; }
 
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-body);
   background: var(--bg);
-  color: var(--text);
+  color: var(--ink);
   min-height: 100vh;
   padding-bottom: 100px;
 }
 
 .app-header {
-  padding: 24px 20px 12px;
+  padding: 28px 20px 16px;
+  border-bottom: 1px solid var(--border);
 }
 
 .app-header h1 {
   margin: 0;
-  font-size: 28px;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  text-wrap: balance;
 }
 
 .summary {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
 }
 
 .chore-list {
-  padding: 8px 16px;
+  padding: 16px 16px 8px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -65,7 +103,8 @@ body {
 
 .chore-card {
   background: var(--surface);
-  border: 1px solid var(--ok-border);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
   border-radius: var(--radius);
   padding: 14px 16px;
   display: flex;
@@ -75,13 +114,11 @@ body {
 }
 
 .chore-card.overdue {
-  background: var(--overdue-bg);
-  border-color: var(--overdue-border);
+  border-left-color: var(--overdue);
 }
 
 .chore-card.today {
-  background: var(--today-bg);
-  border-color: var(--today-border);
+  border-left-color: var(--today);
 }
 
 .chore-info {
@@ -100,6 +137,15 @@ body {
   font-size: 13px;
   color: var(--muted);
   margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.chore-card.overdue .chore-meta {
+  color: var(--overdue);
+}
+
+.chore-card.today .chore-meta {
+  color: var(--today);
 }
 
 .chore-actions {
@@ -111,9 +157,9 @@ body {
 
 .done-btn {
   background: var(--accent);
-  color: white;
+  color: var(--accent-contrast);
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 10px 14px;
   font-size: 14px;
   font-weight: 600;
@@ -139,6 +185,8 @@ body {
   color: var(--muted);
   margin-top: 60px;
   padding: 0 20px;
+  font-family: var(--font-display);
+  font-size: 17px;
 }
 
 .fab {
@@ -149,7 +197,8 @@ body {
   height: 56px;
   border-radius: 50%;
   background: var(--accent);
-  color: white;
+  color: var(--accent-contrast);
+  font-family: var(--font-display);
   font-size: 28px;
   border: none;
   box-shadow: 0 4px 14px rgba(0,0,0,0.25);
@@ -161,10 +210,10 @@ body {
 
 .add-dialog {
   border: none;
-  border-radius: var(--radius);
+  border-radius: 14px;
   padding: 0;
   background: var(--surface);
-  color: var(--text);
+  color: var(--ink);
   width: min(420px, 90vw);
 }
 
@@ -181,23 +230,28 @@ body {
 
 #add-form h2 {
   margin: 0 0 10px;
-  font-size: 18px;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
 }
 
 #add-form label {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
-  margin-top: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 12px;
 }
 
 #add-form input,
 #add-form select {
   background: var(--bg);
-  border: 1px solid var(--ok-border);
-  color: var(--text);
-  border-radius: 10px;
+  border: 1px solid var(--border);
+  color: var(--ink);
+  border-radius: 8px;
   padding: 10px 12px;
   font-size: 15px;
+  font-family: var(--font-body);
 }
 
 .custom-days-wrap {
@@ -209,11 +263,11 @@ body {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 20px;
+  margin-top: 22px;
 }
 
 .btn-primary, .btn-secondary {
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 10px 16px;
   font-size: 14px;
   font-weight: 600;
@@ -223,7 +277,7 @@ body {
 
 .btn-primary {
   background: var(--accent);
-  color: white;
+  color: var(--accent-contrast);
 }
 
 .btn-secondary {
