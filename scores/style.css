@@ -2469,3 +2469,167 @@ table {
   display: block;
   margin: 20px auto 0;
 }
+
+/* ---------- team pages ---------- */
+
+.logo-xl {
+  width: 96px;
+  height: 96px;
+}
+
+.team-sheet {
+  background:
+    radial-gradient(70% 30% at 50% 10%, rgba(255, 255, 255, 0.16), transparent 70%),
+    linear-gradient(180deg, var(--away) 0%, var(--home) 55%, #000 100%);
+}
+
+[data-team-page] {
+  cursor: pointer;
+}
+
+.tp-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0 8px;
+  text-align: center;
+}
+
+.tp-name {
+  margin: 8px 0 0;
+  font-size: 1.6rem;
+  font-weight: 800;
+}
+
+.tp-sub {
+  margin: 0 0 8px;
+  color: var(--soft);
+  font-weight: 600;
+}
+
+.tp-list,
+.tp-roster {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tp-game {
+  display: grid;
+  grid-template-columns: 6.6em 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 2px;
+  border-top: 1px solid var(--glass-line);
+  font-size: 0.92rem;
+}
+
+.tp-game:first-child {
+  border-top: 0;
+}
+
+.tp-game.next {
+  margin: 0 -8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.tp-game.next + .tp-game {
+  border-top: 0;
+}
+
+.tp-date {
+  display: flex;
+  flex-direction: column;
+  color: var(--soft);
+}
+
+.tp-date small {
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.tp-opp {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.tp-right {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tp-result {
+  display: inline-block;
+  width: 1.4em;
+  text-align: center;
+  color: var(--soft);
+}
+
+.tp-result.w {
+  color: #30d158;
+}
+
+.tp-result.l {
+  color: #ff6961;
+}
+
+.tp-live {
+  color: var(--live);
+}
+
+.tp-roster li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 2px;
+  border-top: 1px solid var(--glass-line);
+}
+
+.tp-roster li:first-child {
+  border-top: 0;
+}
+
+.tp-head {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.tp-head img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+
+.tp-player {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tp-player small,
+.tp-extra {
+  color: var(--soft);
+  font-size: 0.8rem;
+}
+
+.tp-extra {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  white-space: nowrap;
+}

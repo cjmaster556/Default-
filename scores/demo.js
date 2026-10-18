@@ -537,8 +537,53 @@
     };
   }
 
+  // A team's season so far and what's left, shaped like ESPN's team schedule feed.
+  function teamSchedule(league, id) {
+    const teams = T[league] || [];
+    const me = teams.find((t) => t.id === String(id)) || teams[0];
+    const opps = teams.filter((t) => t !== me);
+    const week = 7 * 86400000;
+    const events = Array.from({ length: 10 }, (_, i) => {
+      const opp = opps[i % opps.length];
+      const date = new Date(start + (i - 5) * week).toISOString();
+      const state = i < 5 ? "post" : i === 5 ? "in" : "pre";
+      const mine = [24, 17, 31, 20, 27, 14][i] ?? 0;
+      const theirs = [20, 23, 10, 20, 13, 10][i] ?? 0;
+      const home = i % 2 === 0;
+      const side = (t, ha, score, win) => ({ homeAway: ha, team: { id: t.id, abbreviation: t.abbreviation, displayName: t.displayName, shortDisplayName: t.shortDisplayName, logos: [{ href: t.logo }], color: t.color }, score: state === "pre" ? undefined : { value: score, displayValue: String(score) }, winner: state === "post" ? win : undefined });
+      return {
+        id: `9${i}`,
+        date,
+        week: { text: `Week ${i + 2}` },
+        competitions: [{
+          status: { type: { state, shortDetail: state === "post" ? "Final" : "" } },
+          competitors: [side(me, home ? "home" : "away", mine, mine > theirs), side(opp, home ? "away" : "home", theirs, theirs > mine)],
+        }],
+      };
+    });
+    return { team: { ...me, recordSummary: "4-1", standingSummary: "1st in Division" }, events };
+  }
+
+  function teamRoster(league) {
+    const p = (fullName, jersey, pos, age, ht, wt) => ({ fullName, jersey, position: { abbreviation: pos }, age, displayHeight: ht, displayWeight: wt, headshot: {} });
+    if (league === "nfl" || league === "cfb") {
+      return {
+        athletes: [
+          { position: "offense", items: [p("Josh Allen", "17", "QB", 30, "6' 5\"", "237 lbs"), p("James Cook", "4", "RB", 27, "5' 11\"", "190 lbs"), p("Khalil Shakir", "10", "WR", 26, "6' 0\"", "190 lbs")] },
+          { position: "defense", items: [p("Dee Alford", "23", "CB", 28, "5' 11\"", "180 lbs"), p("Terrel Bernard", "43", "LB", 27, "6' 1\"", "224 lbs")] },
+          { position: "specialTeam", items: [p("Tyler Bass", "16", "PK", 29, "5' 10\"", "183 lbs")] },
+          { position: "suspended", items: [] },
+        ],
+      };
+    }
+    return { athletes: [p("Star Guard", "1", "G", 26, "6' 3\"", "195 lbs"), p("Big Center", "34", "C", 29, "7' 0\"", "260 lbs"), p("Wing Forward", "8", "F", 24, "6' 8\"", "225 lbs")] };
+  }
+
   // The app asks the alerts server for these; in the demo, answer from here.
   function feed(path) {
+    const tm = path.match(/\/sports\/[\w-]+\/([\w-]+)\/teams\/(\d+)\/(schedule|roster)/);
+    const leagueOf = { nfl: "nfl", "college-football": "cfb", nba: "nba", wnba: "wnba", mlb: "mlb", nhl: "nhl" };
+    if (tm) return tm[3] === "schedule" ? teamSchedule(leagueOf[tm[1]], tm[2]) : teamRoster(leagueOf[tm[1]]);
     let m = path.match(/\/sports\/[\w-]+\/([\w-]+)\/standings/);
     const keyOf = (seg) => ({ nfl: "nfl", "college-football": "cfb", nba: "nba", wnba: "wnba", mlb: "mlb", nhl: "nhl" })[seg];
     if (m) return standings(keyOf(m[1]), /level=3/.test(path));

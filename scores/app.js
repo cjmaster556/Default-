@@ -49,6 +49,8 @@
   const videoDialog = $("video-dialog");
   const toastEl = $("toast");
   const alertsDialog = $("alerts-dialog");
+  const teamDialog = $("team-dialog");
+  const teamEl = $("team-detail");
   const alertsBody = $("alerts-body");
 
   const state = {
@@ -71,6 +73,7 @@
     alerts: loadAlerts(),
     alertSettings: loadJSON(SETTINGS_KEY, {}),
     reminders: new Map(loadJSON(REMIND_KEY, []).map((r) => [r.key, r])), // event key -> { key, league, id, date, name }
+    teamPage: null, // { league, id, tab, info, schedule, roster, news, clips, error }
     alertSeen: new Map(), // event key -> { a, h, st } as of the last check
     seq: 0,
     timer: null,
@@ -1876,8 +1879,8 @@
               ? `<span class="gd-timeouts" aria-label="${timeouts} timeouts left">${[0, 1, 2].map((i) => `<i class="${i < timeouts ? "on" : ""}"></i>`).join("")}</span>`
               : ""
           }
-          <span class="gd-logo">${logo(team, "lg")}${hasBall ? '<span class="gd-ball" title="Has the ball"></span>' : ""}</span>
-          <span class="gd-name">${rank(c) ? `<span class="rank">${rank(c)}</span>` : ""}${esc(team.shortDisplayName || team.abbreviation)}</span>
+          <span class="gd-logo" ${teamLink(ev._league, team)}>${logo(team, "lg")}${hasBall ? '<span class="gd-ball" title="Has the ball"></span>' : ""}</span>
+          <span class="gd-name" ${teamLink(ev._league, team)}>${rank(c) ? `<span class="rank">${rank(c)}</span>` : ""}${esc(team.shortDisplayName || team.abbreviation)}</span>
           <span class="gd-rec">${esc(recordText(c))}</span>
           <button class="follow-btn${on ? " on" : ""}" data-follow="${esc(key)}" aria-pressed="${on}">${on ? "★ Following" : "☆ Follow"}</button>
         </div>`;
@@ -2410,6 +2413,264 @@
     return { key, league, id, abbr: t.abbreviation, name: t.displayName, short: t.shortDisplayName, logo: t.logo || "", color: t.color || "" };
   }
 
+  // ---------- team pages ----------
+
+  const ROSTER_GROUPS = {
+    offense: "Offense",
+    defense: "Defense",
+    specialTeam: "Special Teams",
+    injuredReserveOrOut: "Injured Reserve / Out",
+    suspended: "Suspended",
+    practiceSquad: "Practice Squad",
+  };
+
+  // A team's own page: schedule and results, roster, news and highlights.
+  async function openTeam(league, id, seed = {}) {
+    if (!byKey[league] || !id) return;
+    const page = { league, id: String(id), tab: "schedule", info: { ...seed }, schedule: null, roster: null, news: null, clips: null, error: null };
+    state.teamPage = page;
+    paintTeamColors();
+    renderTeam();
+    if (!teamDialog.open) teamDialog.showModal();
+    teamEl.scrollTop = 0;
+
+    const base = `/espn/apis/site/v2/sports/${byKey[league].path}`;
+    const load = (key, promise) =>
+      promise
+        .then((v) => {
+          if (state.teamPage !== page) return;
+          page[key] = v;
+          renderTeam();
+        })
+        .catch(() => {
+          if (state.teamPage !== page) return;
+          page[key] = page[key] || [];
+          if (key === "schedule") page.error = "Couldn't load this team's schedule.";
+          renderTeam();
+        });
+    load(
+      "schedule",
+      serverJSON(`${base}/teams/${page.id}/schedule`).then((d) => {
+        const t = d.team || {};
+        page.info = {
+          ...page.info,
+          name: t.displayName || page.info.name,
+          short: t.shortDisplayName || t.name || page.info.short,
+          abbr: t.abbreviation || page.info.abbr,
+          logo: t.logo || t.logos?.[0]?.href || page.info.logo,
+          color: t.color || page.info.color,
+          alternateColor: t.alternateColor || page.info.alternateColor,
+          record: t.recordSummary || "",
+          standing: t.standingSummary || "",
+        };
+        paintTeamColors();
+        return d.events || [];
+      })
+    );
+    load("roster", serverJSON(`${base}/teams/${page.id}/roster`).then((d) => d.athletes || []));
+    load(
+      "news",
+      serverJSON(`${base}/news?team=${page.id}&limit=30`).then((d) => {
+        const all = (d.articles || []).map((a) => ({ ...a, _league: league }));
+        // ESPN's team feed mixes in league stories; keep the ones tagged with this team.
+        const own = all.filter((a) => (a.categories || []).some((c) => String(c.teamId) === page.id));
+        return own.length ? own : all;
+      })
+    );
+    load(
+      "clips",
+      serverJSON(`/videos?league=${league}`).then((d) => {
+        const words = [page.info.short, page.info.name, page.info.location].filter((w) => w && w.length >= 4).map((w) => w.toLowerCase());
+        return (d.items || [])
+          .filter((v) => words.some((w) => String(v.title).toLowerCase().includes(w)))
+          .map((v) => ({ kind: "yt", id: v.id, league, title: v.title, thumb: v.thumbnail || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`, published: v.published }));
+      })
+    );
+  }
+
+  function paintTeamColors() {
+    const color = vividColor(state.teamPage?.info);
+    teamDialog.style.setProperty("--away", color);
+    teamDialog.style.setProperty("--home", `color-mix(in srgb, ${color} 55%, black)`);
+  }
+
+  function renderTeam() {
+    const page = state.teamPage;
+    if (!page) return;
+    const info = page.info;
+    const key = `${page.league}:${page.id}`;
+    const on = state.favorites.has(key);
+    const tabs = [
+      ["schedule", "Schedule"],
+      ["roster", "Roster"],
+      ["news", "News"],
+      ["highlights", "Highlights"],
+    ];
+    const scroll = teamEl.scrollTop;
+    teamEl.innerHTML = `
+      <div class="tp-hero">
+        ${logo(info, "xl")}
+        <h2 class="tp-name">${esc(info.name || info.short || "")}</h2>
+        <p class="tp-sub">${esc([info.record, info.standing].filter(Boolean).join(" · "))}</p>
+        <button class="follow-btn${on ? " on" : ""}" data-follow-team="${esc(key)}" aria-pressed="${on}">${on ? "★ Following" : "☆ Follow"}</button>
+      </div>
+      <div class="gd-sticky">
+        <nav class="gd-tabs" role="tablist">
+          ${tabs.map(([k, label]) => `<button class="gd-tab${k === page.tab ? " active" : ""}" role="tab" data-team-tab="${k}" aria-selected="${k === page.tab}">${label}</button>`).join("")}
+        </nav>
+      </div>
+      <div class="gd-panel">${teamPanel(page)}</div>`;
+    teamEl.scrollTop = scroll;
+  }
+
+  function teamPanel(page) {
+    const loading = (what) => `<p class="loading">Loading ${what}…</p>`;
+    if (page.tab === "schedule") {
+      if (page.error) return `<p class="loading">${esc(page.error)}</p>`;
+      return page.schedule ? scheduleHTML(page) : loading("schedule");
+    }
+    if (page.tab === "roster") return page.roster ? rosterHTML(page.roster) : loading("roster");
+    if (page.tab === "news") {
+      if (!page.news) return loading("news");
+      return page.news.length ? `<div class="stories">${page.news.map(storyCard).join("")}</div>` : '<p class="loading">No recent stories.</p>';
+    }
+    if (!page.clips) return loading("highlights");
+    return page.clips.length ? highlightsHTML(page.clips) : '<p class="loading">No recent highlights for this team.</p>';
+  }
+
+  function scheduleHTML(page) {
+    const events = page.schedule.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
+    if (!events.length) return '<p class="loading">No games scheduled.</p>';
+    const next = events.find((e) => (e.competitions?.[0]?.status || e.status)?.type?.state !== "post");
+    const rows = events
+      .map((ev) => {
+        const comp = ev.competitions?.[0] || {};
+        const list = comp.competitors || [];
+        const me = list.find((c) => String(c.team?.id) === page.id);
+        const opp = list.find((c) => c !== me);
+        if (!me || !opp) return "";
+        const st = (comp.status || ev.status)?.type?.state || "pre";
+        const score = (c) => c?.score?.displayValue ?? c?.score ?? "";
+        const d = new Date(ev.date);
+        const date = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+        let right;
+        if (st === "post") {
+          const won = me.winner === true;
+          const lost = opp.winner === true;
+          right = `<span class="tp-result ${won ? "w" : lost ? "l" : ""}">${won ? "W" : lost ? "L" : "T"}</span> ${esc(score(me))}–${esc(score(opp))}`;
+        } else if (st === "in") {
+          right = `<span class="tp-live">Live</span> ${esc(score(me))}–${esc(score(opp))}`;
+        } else {
+          right = esc((comp.status || ev.status)?.type?.shortDetail?.includes("TBD") ? "TBD" : d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }));
+        }
+        const t = opp.team || {};
+        const label = ev.week?.text || comp.type?.abbreviation || "";
+        return `
+          <li class="tp-game${ev === next ? " next" : ""}${st === "post" ? " done" : ""}">
+            <span class="tp-date">${esc(date)}${label && byKey[page.league].sport === "football" ? `<small>${esc(label)}</small>` : ""}</span>
+            <span class="tp-opp">${me.homeAway === "away" ? "@" : "vs"} ${logo({ logo: t.logo || t.logos?.[0]?.href, color: t.color }, "xs")} ${esc(t.shortDisplayName || t.abbreviation || t.displayName || "")}</span>
+            <span class="tp-right">${right}</span>
+          </li>`;
+      })
+      .join("");
+    return `<section class="gcard"><h3>Schedule</h3><ol class="tp-list">${rows}</ol></section>`;
+  }
+
+  function rosterHTML(athletes) {
+    if (!athletes.length) return '<p class="loading">No roster available.</p>';
+    // Football rosters come in groups (offense, defense...); the rest are one list.
+    const groups = athletes[0]?.items ? athletes.filter((g) => g.items?.length).map((g) => ({ title: ROSTER_GROUPS[g.position] || g.position, items: g.items })) : [{ title: "Players", items: athletes }];
+    return groups
+      .map(
+        (g) => `
+        <section class="gcard">
+          <h3>${esc(g.title)}</h3>
+          <ul class="tp-roster">
+            ${g.items
+              .map((a) => {
+                const meta = [a.jersey ? `#${a.jersey}` : "", a.position?.abbreviation].filter(Boolean).join(" · ");
+                const extra = [a.age ? `Age ${a.age}` : "", [a.displayHeight, a.displayWeight].filter(Boolean).join(" · ")].filter(Boolean);
+                return `<li>
+                  <span class="tp-head">${a.headshot?.href ? `<img src="${esc(a.headshot.href)}" alt="" loading="lazy" onerror="this.remove()" />` : ""}</span>
+                  <span class="tp-player"><b>${esc(a.fullName || a.displayName || "")}</b><small>${esc(meta)}</small></span>
+                  <span class="tp-extra">${extra.map((x) => `<span>${esc(x)}</span>`).join("")}</span>
+                </li>`;
+              })
+              .join("")}
+          </ul>
+        </section>`
+      )
+      .join("");
+  }
+
+  teamEl.addEventListener("click", (e) => {
+    const page = state.teamPage;
+    if (!page) return;
+    const tab = e.target.closest("[data-team-tab]");
+    if (tab) {
+      page.tab = tab.dataset.teamTab;
+      renderTeam();
+      return;
+    }
+    const follow = e.target.closest("[data-follow-team]");
+    if (follow) {
+      const info = page.info;
+      toggleFavorite(follow.dataset.followTeam, {
+        key: follow.dataset.followTeam,
+        league: page.league,
+        id: page.id,
+        abbr: info.abbr,
+        name: info.name,
+        short: info.short,
+        logo: info.logo || "",
+        color: info.color || "",
+        alternateColor: info.alternateColor || "",
+      });
+      renderTeam();
+      if (state.view === "home") refresh();
+      else render();
+      return;
+    }
+    const clip = e.target.closest("[data-hl]");
+    if (clip && page.clips) {
+      const i = Number(clip.dataset.index);
+      if (page.clips[i] && canPlayHere(page.clips[i])) {
+        e.preventDefault();
+        playFrom(page.clips, i);
+      }
+    }
+  });
+
+  $("close-team").addEventListener("click", () => teamDialog.close());
+  teamDialog.addEventListener("click", (e) => {
+    if (e.target === teamDialog) teamDialog.close();
+  });
+  teamDialog.addEventListener("close", () => (state.teamPage = null));
+
+  // Any element marked data-team-page="league:id" opens that team's page.
+  document.addEventListener("click", (e) => {
+    const el = e.target.closest("[data-team-page]");
+    if (!el) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const [league, id] = el.dataset.teamPage.split(":");
+    openTeam(league, id, {
+      name: el.dataset.teamName,
+      short: el.dataset.teamShort,
+      logo: el.dataset.teamLogo,
+      color: el.dataset.teamColor,
+      alternateColor: el.dataset.teamAlt,
+    });
+  }, true);
+
+  // Attributes that make an element open a team's page.
+  const teamLink = (league, t) =>
+    t?.id
+      ? `data-team-page="${esc(`${league}:${t.id}`)}" data-team-name="${esc(t.displayName || "")}" data-team-short="${esc(t.shortDisplayName || t.name || "")}" data-team-logo="${esc(
+          t.logo || t.logos?.[0]?.href || ""
+        )}" data-team-color="${esc(t.color || "")}" data-team-alt="${esc(t.alternateColor || "")}"`
+      : "";
+
   // ---------- standings, highlights and news tabs ----------
 
   const TAB_TITLES = { standings: "Standings", videos: "Highlights", news: "News" };
@@ -2596,7 +2857,7 @@
             const t = e.team || {};
             const mine = state.favorites.has(`${league}:${t.id}`);
             const clinch = s.clincher?.displayValue && s.clincher.displayValue !== "-" ? `<sup class="clinch">${esc(s.clincher.displayValue)}</sup>` : "";
-            return `<tr class="${mine ? "mine" : ""}">
+            return `<tr class="${mine ? "mine" : ""}" ${teamLink(league, t)}>
               <td class="st-rank">${i + 1}</td>
               <th scope="row"><span class="st-team">${logo({ logo: t.logos?.[0]?.href, color: t.color }, "xs")}<span class="st-name">${esc(t.shortDisplayName || t.displayName || t.abbreviation)}</span>${clinch}</span></th>
               ${cols.map(([n]) => `<td>${esc(s[n]?.displayValue ?? "")}</td>`).join("")}
@@ -2627,7 +2888,7 @@
         const mine = state.favorites.has(`cfb:${t.id}`);
         const moved = r.previous ? r.previous - r.current : 0;
         const trend = !r.previous ? '<span class="trend new">NEW</span>' : moved ? `<span class="trend ${moved > 0 ? "up" : "down"}">${moved > 0 ? "▲" : "▼"}${Math.abs(moved)}</span>` : '<span class="trend">–</span>';
-        return `<tr class="${mine ? "mine" : ""}">
+        return `<tr class="${mine ? "mine" : ""}" ${teamLink("cfb", t)}>
           <td class="st-rank">${esc(r.current)}</td>
           <th scope="row"><span class="st-team">${logo({ logo: t.logos?.[0]?.href || t.logo, color: t.color }, "xs")}<span class="st-name">${esc(t.location || t.nickname || t.name)}</span></span></th>
           <td>${esc(r.recordSummary || "")}</td>
