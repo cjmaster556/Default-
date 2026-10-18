@@ -468,5 +468,83 @@
     };
   }
 
-  window.SCORES_DEMO = { scoreboard, summary, teams, team: teamNext };
+  // ---- standings, rankings, news and highlights, shaped like the real feeds ----
+
+  const st = (name, displayValue) => ({ name, displayValue, value: Number(String(displayValue).replace(/[^\d.-]/g, "")) || 0 });
+  const entry = (tm, w, l, extra = {}) => ({
+    team: { id: tm.id, displayName: tm.displayName, shortDisplayName: tm.shortDisplayName, abbreviation: tm.abbreviation, color: tm.color, logos: [{ href: tm.logo }] },
+    stats: [
+      st("wins", w),
+      st("losses", l),
+      st("ties", 0),
+      st("winPercent", (w / Math.max(1, w + l)).toFixed(3).replace(/^0/, "")),
+      st("gamesBehind", extra.gb ?? "-"),
+      st("pointDifferential", extra.diff ?? "+0"),
+      st("streak", extra.streak ?? "W1"),
+      st("Last Ten Games", extra.l10 ?? "5-5"),
+      st("playoffSeed", extra.seed ?? 0),
+      ...(extra.otl != null ? [st("otLosses", extra.otl), st("points", w * 2 + extra.otl), st("gamesPlayed", w + l + extra.otl)] : []),
+    ],
+  });
+  const group = (name, abbreviation, children) => ({ name, abbreviation, children });
+  const table = (name, entries) => ({ name, standings: { entries } });
+
+  function standings(league, divisions) {
+    const T2 = T[league];
+    if (league === "nhl") {
+      const div = table("Atlantic Division", [entry(T2[1], 7, 2, { otl: 0, streak: "W5" }), entry(T2[0], 4, 2, { otl: 1 }), entry(T2[5], 2, 4, { otl: 1, streak: "L2" })]);
+      const met = table("Metropolitan Division", [entry(T2[2], 5, 1, { otl: 0 }), entry(T2[3], 3, 3, { otl: 0 })]);
+      return { name: "National Hockey League", children: [group("Eastern Conference", "East", divisions ? [div, met] : []), ...(divisions ? [] : [table("Eastern Conference", [...div.standings.entries, ...met.standings.entries])])] };
+    }
+    const rows = T2.map((tm, i) => entry(tm, 6 - (i % 4), 1 + (i % 4), { seed: i + 1, diff: `${i % 2 ? "-" : "+"}${10 + i * 3}`, gb: i % 4 ? String(i % 4) : "-" }));
+    if (!divisions) return { name: byName[league], children: [table("Conference A", rows.slice(0, Math.ceil(rows.length / 2))), table("Conference B", rows.slice(Math.ceil(rows.length / 2)))] };
+    return { name: byName[league], children: [group("Conference A", "A", [table("Division 1", rows.slice(0, 4)), table("Division 2", rows.slice(4))])] };
+  }
+  const byName = { nfl: "National Football League", nba: "National Basketball Association", mlb: "Major League Baseball", wnba: "WNBA" };
+
+  function rankings() {
+    const rank = (i, tm, prev, rec, pts) => ({ current: i, previous: prev, recordSummary: rec, points: pts, firstPlaceVotes: i === 1 ? 40 : 0, team: { id: tm.id, location: tm.shortDisplayName, nickname: tm.shortDisplayName, color: tm.color, logos: [{ href: tm.logo }] } });
+    const [ORE, OSU, ALA, UGA] = T.cfb;
+    return { rankings: [{ name: "AP Top 25", ranks: [rank(1, UGA, 2, "6-1", 1520), rank(2, ORE, 1, "7-0", 1497), rank(3, OSU, 5, "6-1", 1410), rank(4, ALA, 0, "5-2", 1288)] }, { name: "AFCA Coaches Poll", ranks: [rank(1, ORE, 1, "7-0", 1600), rank(2, UGA, 3, "6-1", 1550)] }] };
+  }
+
+  function news(league) {
+    const teams = T[league] || [];
+    const ago = (h) => new Date(start - h * 3600000).toISOString();
+    return {
+      articles: [
+        { id: `${league}1`, type: "Media", headline: `${teams[1]?.displayName} vs. ${teams[0]?.displayName}: Game Highlights`, description: "Watch the best plays from today's game.", published: ago(0.2), images: [{ url: "https://a.espncdn.com/photo/demo1.jpg" }], links: { web: { href: "https://www.espn.com/" } }, categories: [{ type: "team", teamId: Number(teams[1]?.id) }] },
+        { id: `${league}2`, type: "Story", headline: `What we learned from Week 7`, description: "Takeaways, surprises and the biggest questions heading into next week.", published: ago(2), images: [{ url: "https://a.espncdn.com/photo/demo2.jpg" }], links: { web: { href: "https://www.espn.com/" } }, categories: [] },
+        { id: `${league}3`, type: "HeadlineNews", headline: `${teams[2]?.shortDisplayName} sign veteran to one-year deal`, description: "The move adds depth ahead of the stretch run.", published: ago(26), images: [], links: { web: { href: "https://www.espn.com/" } }, categories: [{ type: "team", teamId: Number(teams[2]?.id) }] },
+      ],
+    };
+  }
+
+  function videos(league) {
+    const teams = T[league] || [];
+    const ago = (h) => new Date(start - h * 3600000).toISOString();
+    return {
+      league,
+      items: [
+        { id: "dQw4w9WgXcQ", title: `${teams[1]?.displayName} vs. ${teams[0]?.displayName} | Full Game Highlights`, published: ago(0.5), thumbnail: "" },
+        { id: "9bZkp7q19f0", title: `Top 10 plays of the week`, published: ago(5), thumbnail: "" },
+        { id: "kJQP7kiw5Fk", title: `${teams[2]?.shortDisplayName} rookie's first career touchdown`, published: ago(30), thumbnail: "" },
+      ],
+    };
+  }
+
+  // The app asks the alerts server for these; in the demo, answer from here.
+  function feed(path) {
+    let m = path.match(/\/sports\/[\w-]+\/([\w-]+)\/standings/);
+    const keyOf = (seg) => ({ nfl: "nfl", "college-football": "cfb", nba: "nba", wnba: "wnba", mlb: "mlb", nhl: "nhl" })[seg];
+    if (m) return standings(keyOf(m[1]), /level=3/.test(path));
+    if (/rankings/.test(path)) return rankings();
+    m = path.match(/\/sports\/[\w-]+\/([\w-]+)\/news/);
+    if (m) return news(keyOf(m[1]));
+    m = path.match(/videos\?league=(\w+)/);
+    if (m) return videos(m[1]);
+    throw new Error("not in demo");
+  }
+
+  window.SCORES_DEMO = { scoreboard, summary, teams, team: teamNext, feed };
 })();

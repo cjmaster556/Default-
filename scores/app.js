@@ -42,6 +42,9 @@
   const pickerNavEl = $("picker-leagues");
   const installBtn = $("install-btn");
   const alertsBtn = $("alerts-btn");
+  const panelEl = $("panel");
+  const tabbarEl = $("tabbar");
+  const videoDialog = $("video-dialog");
   const toastEl = $("toast");
 
   const state = {
@@ -56,6 +59,10 @@
     clocks: new Map(),
     openGame: null, // { key, event, summary }
     detailTab: "stats",
+    tab: "scores", // scores | standings | videos | news
+    tabLeague: { standings: "nfl", videos: "home", news: "home" },
+    tabVariant: {}, // "standings:nfl" -> "division" | "conference"
+    tabData: {}, // "tab:league:variant" -> { data, error, at, loading }
     alerts: loadAlerts(),
     alertSeen: new Map(), // event key -> { a, h, st } as of the last check
     seq: 0,
@@ -384,7 +391,8 @@
 
     syncOpenGame();
     syncClocks();
-    render();
+    // Scores keep updating behind the other tabs; only redraw what's on screen.
+    if (state.tab === "scores") render();
     if (state.openGame) refreshDetail();
     schedule();
   }
@@ -847,7 +855,22 @@
   // ---------- rendering: shell ----------
 
   function render() {
+    for (const b of tabbarEl.querySelectorAll("[data-tab]")) {
+      const on = b.dataset.tab === state.tab;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-current", on ? "page" : "false");
+    }
+    const scores = state.tab === "scores";
+    gamesEl.hidden = !scores;
+    statusEl.hidden = !scores;
+    panelEl.hidden = scores;
+    if (!scores) {
+      emptyEl.hidden = true;
+      renderTabShell();
+      return;
+    }
     renderNav();
+    keepActiveChipInView();
     renderToolbar();
 
     const events = sortEvents(currentEvents());
@@ -1797,13 +1820,356 @@
     return { key, league, id, abbr: t.abbreviation, name: t.displayName, short: t.shortDisplayName, logo: t.logo || "", color: t.color || "" };
   }
 
+  // ---------- standings, highlights and news tabs ----------
+
+  const TAB_TITLES = { standings: "Standings", videos: "Highlights", news: "News" };
+  const TAB_FRESH = 5 * 60 * 1000; // reload a tab's data when it's older than this
+
+  // ESPN feeds and YouTube lists come through the alerts server, which can
+  // reach them when the browser can't; without one, try ESPN directly.
+  async function serverJSON(path) {
+    if (demoMode) return window.SCORES_DEMO.feed(path);
+    if (ALERTS_SERVER) {
+      try {
+        return await fetchJSON(`${ALERTS_SERVER}${path}`);
+      } catch (err) {
+        if (!path.startsWith("/espn/")) throw err;
+      }
+    }
+    if (!path.startsWith("/espn/")) throw new Error("highlights need the alerts server");
+    return fetchJSON(`https://site.api.espn.com${path.slice("/espn".length)}`);
+  }
+
+  function timeAgo(iso) {
+    const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (!Number.isFinite(mins)) return "";
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.round(hrs / 24);
+    if (days < 7) return `${days}d ago`;
+    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+
+  const favLeagues = () => [...new Set([...state.favorites.values()].map((f) => f.league))].filter((l) => byKey[l]);
+
+  function tabChoices(tab) {
+    const leagues = LEAGUES.map((l) => ({ key: l.key, label: shortName(l) }));
+    return tab === "standings" ? leagues : [{ key: "home", label: "★ My Teams" }, ...leagues];
+  }
+
+  function tabLeague(tab) {
+    let key = state.tabLeague[tab];
+    if (!tabChoices(tab).some((c) => c.key === key)) key = tabChoices(tab)[0].key;
+    // "My Teams" with no teams followed has nothing to show; start on a league instead.
+    if (key === "home" && !state.favorites.size) key = "nfl";
+    return key;
+  }
+
+  // Standings come in two layouts; college football has polls instead.
+  function tabVariants(tab, league) {
+    if (tab !== "standings") return null;
+    if (league === "cfb") return [{ key: "ap", label: "AP Top 25" }, { key: "coaches", label: "Coaches Poll" }];
+    if (league === "wnba") return null;
+    return [{ key: "division", label: "Division" }, { key: "conference", label: "Conference" }];
+  }
+
+  const tabVariant = (tab, league) => {
+    const vs = tabVariants(tab, league);
+    if (!vs) return "";
+    const v = state.tabVariant[`${tab}:${league}`];
+    return vs.some((x) => x.key === v) ? v : vs[0].key;
+  };
+
+  const tabDataKey = (tab, league, variant) => `${tab}:${league}:${variant}`;
+
+  async function loadTab(force = false) {
+    const tab = state.tab;
+    if (tab === "scores") return;
+    const league = tabLeague(tab);
+    const variant = tabVariant(tab, league);
+    const key = tabDataKey(tab, league, variant);
+    const have = state.tabData[key];
+    if (!force && have && (have.loading || Date.now() - have.at < TAB_FRESH)) return;
+    state.tabData[key] = { ...(have || {}), loading: true };
+    render();
+    let data = null;
+    let error = null;
+    try {
+      data = await fetchTab(tab, league, variant);
+    } catch (err) {
+      error = err;
+    }
+    state.tabData[key] = { data: data ?? have?.data, error, at: Date.now(), loading: false };
+    if (state.tab === tab) render();
+  }
+
+  async function fetchTab(tab, league, variant) {
+    if (tab === "standings") {
+      const path = byKey[league].path;
+      if (league === "cfb") return serverJSON(`/espn/apis/site/v2/sports/${path}/rankings`);
+      return serverJSON(`/espn/apis/v2/sports/${path}/standings${variant === "division" ? "?level=3" : ""}`);
+    }
+    const leagues = league === "home" ? favLeagues() : [league];
+    if (tab === "news") {
+      const lists = await Promise.allSettled(
+        leagues.map((l) => serverJSON(`/espn/apis/site/v2/sports/${byKey[l].path}/news?limit=50`).then((d) => (d.articles || []).map((a) => ({ ...a, _league: l }))))
+      );
+      if (lists.every((r) => r.status === "rejected")) throw lists[0].reason;
+      return lists.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+    }
+    const lists = await Promise.allSettled(leagues.map((l) => serverJSON(`/videos?league=${l}`).then((d) => (d.items || []).map((v) => ({ ...v, _league: l })))));
+    if (lists.every((r) => r.status === "rejected")) throw lists[0].reason;
+    return lists.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  }
+
+  function renderTabShell() {
+    const tab = state.tab;
+    const league = tabLeague(tab);
+    titleEl.textContent = TAB_TITLES[tab];
+    liveEl.hidden = true;
+    navEl.innerHTML = tabChoices(tab)
+      .map((c) => `<button class="chip${c.key === league ? " active" : ""}" data-tab-league="${c.key}" aria-current="${c.key === league}">${esc(c.label)}</button>`)
+      .join("");
+    const variants = tabVariants(tab, league);
+    toolbarEl.hidden = !variants;
+    if (variants) {
+      const v = tabVariant(tab, league);
+      toolbarEl.innerHTML = `<div class="segmented" role="tablist">${variants
+        .map((x) => `<button class="seg${x.key === v ? " active" : ""}" data-variant="${x.key}" aria-selected="${x.key === v}">${esc(x.label)}</button>`)
+        .join("")}</div>`;
+    }
+
+    const variant = tabVariant(tab, league);
+    const entry = state.tabData[tabDataKey(tab, league, variant)];
+    let html;
+    if (!entry?.data) {
+      html = entry?.error
+        ? `<p class="loading">Couldn't load ${TAB_TITLES[tab].toLowerCase()} (${esc(entry.error.message)}). <button class="link-btn" data-retry>Try again</button></p>`
+        : '<p class="loading">Loading…</p>';
+    } else if (tab === "standings") {
+      html = league === "cfb" ? rankingsHTML(entry.data, variant) : standingsHTML(entry.data, league, variant);
+    } else if (tab === "news") {
+      html = newsHTML(entry.data, league);
+    } else {
+      html = videosHTML(entry.data, league);
+    }
+    panelEl.innerHTML = html;
+    keepActiveChipInView();
+  }
+
+  function keepActiveChipInView() {
+    const chip = navEl.querySelector(".chip.active");
+    if (chip) navEl.scrollLeft = Math.max(0, chip.offsetLeft - navEl.offsetLeft - 16);
+  }
+
+  // ---- standings ----
+
+  const STANDING_COLUMNS = {
+    football: [["wins", "W"], ["losses", "L"], ["ties", "T"], ["winPercent", "PCT"], ["pointDifferential", "DIFF"], ["streak", "STRK"]],
+    basketball: [["wins", "W"], ["losses", "L"], ["winPercent", "PCT"], ["gamesBehind", "GB"], ["Last Ten Games", "L10"], ["streak", "STRK"]],
+    baseball: [["wins", "W"], ["losses", "L"], ["winPercent", "PCT"], ["gamesBehind", "GB"], ["Last Ten Games", "L10"], ["streak", "STRK"]],
+    hockey: [["gamesPlayed", "GP"], ["wins", "W"], ["losses", "L"], ["otLosses", "OTL"], ["points", "PTS"], ["streak", "STRK"]],
+  };
+
+  const statMap = (entry) => Object.fromEntries((entry.stats || []).map((s) => [s.name, s]));
+
+  // Every group in the tree that has its own table (divisions, or conferences when there are none).
+  function standingGroups(node, parent = "", out = []) {
+    if (node?.standings?.entries?.length) out.push({ title: node.name, parent, entries: node.standings.entries });
+    for (const kid of node?.children || []) standingGroups(kid, node.abbreviation || "", out);
+    return out;
+  }
+
+  function standingsHTML(data, league, variant) {
+    const sport = byKey[league].sport;
+    const groups = standingGroups(data);
+    if (!groups.length) return '<p class="loading">No standings available right now.</p>';
+    const num = (s) => Number(s?.value ?? s?.displayValue) || 0;
+    const seed = (s) => num(s.playoffSeed) || 99;
+    const allTies = groups.every((g) => g.entries.every((e) => !num(statMap(e).ties)));
+    const cols = STANDING_COLUMNS[sport].filter(([n]) => !(n === "ties" && allTies));
+
+    return groups
+      .map((g) => {
+        const rows = g.entries
+          .map((e) => ({ e, s: statMap(e) }))
+          .sort((a, b) =>
+            sport === "hockey"
+              ? num(b.s.points) - num(a.s.points) || num(b.s.wins) - num(a.s.wins)
+              : variant === "conference" && (a.s.playoffSeed || b.s.playoffSeed)
+                ? seed(a.s) - seed(b.s)
+                : num(b.s.winPercent) - num(a.s.winPercent) || seed(a.s) - seed(b.s)
+          )
+          .map(({ e, s }, i) => {
+            const t = e.team || {};
+            const mine = state.favorites.has(`${league}:${t.id}`);
+            const clinch = s.clincher?.displayValue && s.clincher.displayValue !== "-" ? `<sup class="clinch">${esc(s.clincher.displayValue)}</sup>` : "";
+            return `<tr class="${mine ? "mine" : ""}">
+              <td class="st-rank">${i + 1}</td>
+              <th scope="row"><span class="st-team">${logo({ logo: t.logos?.[0]?.href, color: t.color }, "xs")}<span class="st-name">${esc(t.shortDisplayName || t.displayName || t.abbreviation)}</span>${clinch}</span></th>
+              ${cols.map(([n]) => `<td>${esc(s[n]?.displayValue ?? "")}</td>`).join("")}
+            </tr>`;
+          })
+          .join("");
+        return `
+          <section class="st-card">
+            <h3>${esc(g.title)}</h3>
+            <div class="table-scroll">
+              <table class="st-table">
+                <thead><tr><th></th><th></th>${cols.map(([, l]) => `<th>${l}</th>`).join("")}</tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </section>`;
+      })
+      .join("");
+  }
+
+  function rankingsHTML(data, variant) {
+    const polls = data.rankings || [];
+    const poll = (variant === "coaches" ? polls.find((p) => /coach/i.test(p.name)) : polls.find((p) => /^AP/i.test(p.name))) || polls[0];
+    if (!poll?.ranks?.length) return '<p class="loading">No rankings available right now.</p>';
+    const rows = poll.ranks
+      .map((r) => {
+        const t = r.team || {};
+        const mine = state.favorites.has(`cfb:${t.id}`);
+        const moved = r.previous ? r.previous - r.current : 0;
+        const trend = !r.previous ? '<span class="trend new">NEW</span>' : moved ? `<span class="trend ${moved > 0 ? "up" : "down"}">${moved > 0 ? "▲" : "▼"}${Math.abs(moved)}</span>` : '<span class="trend">–</span>';
+        return `<tr class="${mine ? "mine" : ""}">
+          <td class="st-rank">${esc(r.current)}</td>
+          <th scope="row"><span class="st-team">${logo({ logo: t.logos?.[0]?.href || t.logo, color: t.color }, "xs")}<span class="st-name">${esc(t.location || t.nickname || t.name)}</span></span></th>
+          <td>${esc(r.recordSummary || "")}</td>
+          <td>${trend}</td>
+          <td class="st-pts">${r.points ? esc(Math.round(r.points)) : ""}${r.firstPlaceVotes ? ` <small>(${esc(r.firstPlaceVotes)})</small>` : ""}</td>
+        </tr>`;
+      })
+      .join("");
+    return `
+      <section class="st-card">
+        <h3>${esc(poll.name)}</h3>
+        <div class="table-scroll">
+          <table class="st-table">
+            <thead><tr><th></th><th></th><th>REC</th><th></th><th>PTS</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </section>`;
+  }
+
+  // ---- highlights ----
+
+  // Words that mark a video or story as being about one of your teams.
+  function teamWords() {
+    return [...state.favorites.values()].flatMap((f) => [f.short, f.name].filter((w) => w && w.length >= 4).map((w) => ({ league: f.league, w: w.toLowerCase() })));
+  }
+
+  const aboutMyTeams = (text, league) => {
+    const t = String(text || "").toLowerCase();
+    return teamWords().some((x) => (!league || x.league === league) && t.includes(x.w));
+  };
+
+  function videoCard(v) {
+    return `
+      <button class="video-card" data-video="${esc(v.id)}" data-video-title="${esc(v.title)}">
+        <span class="thumb"><img src="${esc(v.thumbnail || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`)}" alt="" loading="lazy" onerror="this.remove()" /><span class="play" aria-hidden="true"></span></span>
+        <span class="video-title">${esc(v.title)}</span>
+        <span class="meta-line">${esc([state.tabLeague.videos === "home" ? shortName(byKey[v._league]) : "", timeAgo(v.published)].filter(Boolean).join(" · "))}</span>
+      </button>`;
+  }
+
+  function videosHTML(items, league) {
+    const sorted = items.slice().sort((a, b) => new Date(b.published) - new Date(a.published));
+    if (!sorted.length) return '<p class="loading">No highlights right now.</p>';
+    if (league !== "home") return `<div class="video-grid">${sorted.map(videoCard).join("")}</div>`;
+    const mine = sorted.filter((v) => aboutMyTeams(v.title, v._league));
+    return `
+      ${mine.length ? `<h2 class="panel-h">Your teams</h2><div class="video-grid">${mine.map(videoCard).join("")}</div>` : '<p class="panel-note">No new videos about your teams yet. Here\'s the latest from their leagues.</p>'}
+      <h2 class="panel-h">Latest</h2>
+      <div class="video-grid">${sorted.filter((v) => !mine.includes(v)).map(videoCard).join("")}</div>`;
+  }
+
+  function openVideo(id, title) {
+    $("video-title").textContent = title;
+    $("video-frame").src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=1&playsinline=1&rel=0`;
+    $("video-link").href = `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
+    if (!videoDialog.open) videoDialog.showModal();
+  }
+
+  // ---- news ----
+
+  // ESPN tags stories with the teams they're about.
+  function storyTeams(a) {
+    return (a.categories || []).filter((c) => c.type === "team").map((c) => String(c.teamId ?? c.team?.id ?? ""));
+  }
+
+  const isMyStory = (a) =>
+    storyTeams(a).some((id) => state.favorites.has(`${a._league}:${id}`)) || aboutMyTeams(`${a.headline} ${a.description}`, a._league);
+
+  function storyCard(a) {
+    const img = a.images?.[0]?.url;
+    const href = a.links?.web?.href || a.links?.mobile?.href || "#";
+    const label = a.type === "Media" ? "Video" : a.type === "Recap" ? "Recap" : "";
+    return `
+      <a class="story" href="${esc(href)}" target="_blank" rel="noopener">
+        ${img ? `<span class="story-img"><img src="${esc(img)}" alt="" loading="lazy" onerror="this.remove()" />${a.type === "Media" ? '<span class="play" aria-hidden="true"></span>' : ""}</span>` : ""}
+        <span class="story-text">
+          <span class="story-head">${esc(a.headline)}</span>
+          ${a.description ? `<span class="story-desc">${esc(a.description)}</span>` : ""}
+          <span class="meta-line">${esc([state.tabLeague.news === "home" ? shortName(byKey[a._league]) : "", label, timeAgo(a.published)].filter(Boolean).join(" · "))}</span>
+        </span>
+      </a>`;
+  }
+
+  function newsHTML(items, league) {
+    const seen = new Set();
+    const sorted = items
+      .filter((a) => a.headline && !seen.has(a.id ?? a.headline) && seen.add(a.id ?? a.headline))
+      .sort((a, b) => new Date(b.published) - new Date(a.published));
+    if (!sorted.length) return '<p class="loading">No news right now.</p>';
+    if (league !== "home") return `<div class="stories">${sorted.map(storyCard).join("")}</div>`;
+    const mine = sorted.filter(isMyStory);
+    return `
+      ${mine.length ? `<h2 class="panel-h">Your teams</h2><div class="stories">${mine.map(storyCard).join("")}</div>` : '<p class="panel-note">No recent stories about your teams. Here\'s the latest from their leagues.</p>'}
+      <h2 class="panel-h">Latest</h2>
+      <div class="stories">${sorted.filter((a) => !mine.includes(a)).slice(0, 30).map(storyCard).join("")}</div>`;
+  }
+
+  function setTab(tab) {
+    if (!["scores", "standings", "videos", "news"].includes(tab)) tab = "scores";
+    state.tab = tab;
+    syncHash();
+    window.scrollTo(0, 0);
+    render();
+    if (tab === "scores") refresh();
+    else loadTab();
+  }
+
+  function syncHash() {
+    const want = state.tab === "scores" ? `#${state.view}` : `#${state.tab}/${tabLeague(state.tab)}`;
+    if (location.hash !== want) history.replaceState(null, "", want);
+  }
+
+  // "#nba" is a scores view; "#standings/nfl", "#news/home" and the like pick a tab.
+  function readHash() {
+    const [a, b] = location.hash.slice(1).split("/");
+    if (TAB_TITLES[a]) {
+      state.tab = a;
+      if (b && tabChoices(a).some((c) => c.key === b)) state.tabLeague[a] = b;
+    } else {
+      state.tab = "scores";
+      state.view = byKey[a] ? a : "home";
+    }
+  }
+
   // ---------- navigation ----------
 
   function setView(view) {
     if (view !== "home" && !byKey[view]) view = "home";
     if (state.view === view && state.seq) return;
     state.view = view;
-    if (location.hash.slice(1) !== view) history.replaceState(null, "", `#${view}`);
+    syncHash();
     render();
     refresh();
   }
@@ -1841,9 +2207,43 @@
   navEl.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-view]");
     if (btn) setView(btn.dataset.view);
+    const pick = e.target.closest("[data-tab-league]");
+    if (pick) {
+      state.tabLeague[state.tab] = pick.dataset.tabLeague;
+      syncHash();
+      render();
+      loadTab();
+    }
+  });
+
+  tabbarEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-tab]");
+    if (btn) setTab(btn.dataset.tab);
+  });
+
+  panelEl.addEventListener("click", (e) => {
+    const video = e.target.closest("[data-video]");
+    if (video) openVideo(video.dataset.video, video.dataset.videoTitle);
+    if (e.target.closest("[data-retry]")) loadTab(true);
+  });
+
+  $("close-video").addEventListener("click", () => videoDialog.close());
+  videoDialog.addEventListener("click", (e) => {
+    if (e.target === videoDialog) videoDialog.close();
+  });
+  // Stop playback when the player closes.
+  videoDialog.addEventListener("close", () => {
+    $("video-frame").src = "about:blank";
   });
 
   toolbarEl.addEventListener("click", (e) => {
+    const variant = e.target.closest("[data-variant]");
+    if (variant) {
+      state.tabVariant[`${state.tab}:${tabLeague(state.tab)}`] = variant.dataset.variant;
+      render();
+      loadTab();
+      return;
+    }
     const step = e.target.closest("[data-step]");
     if (step && !step.disabled) {
       const n = Number(step.dataset.step);
@@ -1986,9 +2386,17 @@
     else render();
   });
 
-  window.addEventListener("hashchange", () => setView(location.hash.slice(1) || "home"));
+  window.addEventListener("hashchange", () => {
+    const before = `${state.tab}:${state.view}`;
+    readHash();
+    if (`${state.tab}:${state.view}` === before && state.tab === "scores") return;
+    render();
+    if (state.tab === "scores") refresh();
+    else loadTab();
+  });
 
   document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && state.tab !== "scores") loadTab();
     if (!document.hidden) refresh();
     else if (!alertsWatching()) clearTimeout(state.timer);
   });
@@ -2036,12 +2444,11 @@
 
   // ---------- start ----------
 
-  const initial = location.hash.slice(1);
-  state.view = byKey[initial] ? initial : "home";
-  if (!initial && !state.favorites.size) state.view = "home";
+  readHash();
   renderAlertsBtn();
   render();
   refresh();
+  if (state.tab !== "scores") loadTab();
   // Keep the server's copy of your teams current, and renew the sign-up if the browser dropped it.
   if (state.alerts) syncPush().catch(() => {});
 })();

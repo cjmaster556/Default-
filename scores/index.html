@@ -33,7 +33,27 @@
     <section id="games" class="games" aria-live="polite"></section>
     <div id="empty-state" class="empty-state" hidden></div>
     <p id="status-line" class="status-line"></p>
+    <section id="panel" class="panel" hidden></section>
   </main>
+
+  <nav id="tabbar" class="tabbar" aria-label="Sections">
+    <button class="tab" data-tab="scores">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M12 5v14M7 10v4M17 10v4" /></svg>
+      <span>Scores</span>
+    </button>
+    <button class="tab" data-tab="standings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>
+      <span>Standings</span>
+    </button>
+    <button class="tab" data-tab="videos">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="3" /><path d="m10 9 5 3-5 3z" /></svg>
+      <span>Highlights</span>
+    </button>
+    <button class="tab" data-tab="news">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h12v16H6a2 2 0 0 1-2-2V5a1 1 0 0 1 1-1ZM17 8h2a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2M8 8h5M8 12h5M8 16h3" /></svg>
+      <span>News</span>
+    </button>
+  </nav>
 
   <dialog id="game-dialog" class="sheet game-sheet">
     <div class="sheet-head">
@@ -59,6 +79,15 @@
       <input id="team-search" class="search" type="search" placeholder="Search teams" autocomplete="off" />
     </div>
     <div id="team-list" class="sheet-body team-list"></div>
+  </dialog>
+
+  <dialog id="video-dialog" class="sheet video-sheet">
+    <div class="sheet-head">
+      <span id="video-title" class="sheet-title"></span>
+      <button id="close-video" class="icon-btn" aria-label="Close">&times;</button>
+    </div>
+    <div class="video-frame"><iframe id="video-frame" title="Highlight video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>
+    <a id="video-link" class="video-link" href="#" target="_blank" rel="noopener">Open in YouTube</a>
   </dialog>
 
   <div id="toast" class="toast" role="status" hidden></div>
