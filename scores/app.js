@@ -748,7 +748,13 @@
       const sport = byKey[ev._league]?.sport;
 
       if (!prev || period > prev.period) {
-        state.clocks.set(ev._key, { reported: p.secs, anchor: p.secs, anchorAt: now, changedAt: now, running: false, period, tenths: p.tenths, sig, gaps: prev?.gaps || [] });
+        // First look at this clock: rather than waiting to see it move, guess
+        // from the last play. A wrong guess runs at most HOLD_MAX seconds and
+        // is corrected (held, not bounced) on the next update.
+        const last = ev.competitions?.[0]?.situation?.lastPlay?.text || "";
+        const detail = ev.status?.type?.detail || "";
+        const guess = p.secs > 0 && !!STOP_PLAYS[sport] && !STOP_PLAYS[sport].test(last) && !/half|end of|delay|review|time ?out/i.test(detail);
+        state.clocks.set(ev._key, { reported: p.secs, anchor: p.secs, anchorAt: now, changedAt: now, running: guess, guessed: guess, period, tenths: p.tenths, sig, gaps: prev?.gaps || [] });
         continue;
       }
 
@@ -774,7 +780,9 @@
       };
 
       if (p.secs === prev.reported) {
-        if (prev.running && (whistle || newPlay || now - prev.changedAt > staleAfter(prev) * 1000)) {
+        // A guessed-running clock that the next update shows unmoved was really stopped.
+        const guessWrong = prev.guessed && now - prev.changedAt > feedGap(prev) * 1200;
+        if (prev.running && (whistle || newPlay || guessWrong || now - prev.changedAt > staleAfter(prev) * 1000)) {
           state.clocks.set(ev._key, { ...prev, running: false, anchor: p.secs, anchorAt: now, sig, higherSince: null, hold: holdAt(p.secs) });
         } else if (newPlay || prev.higherSince) {
           state.clocks.set(ev._key, { ...prev, sig, higherSince: null });
@@ -818,8 +826,9 @@
     if (!c) return null;
     let secs = c.anchor;
     if (c.running) {
-      // Never run further past the last change than the feed would normally take to update.
-      const elapsed = Math.min((Date.now() - c.anchorAt) / 1000, staleAfter(c) + 3);
+      // Never run further past the last change than the feed would normally take
+      // to update, and only a few seconds on a guess.
+      const elapsed = Math.min((Date.now() - c.anchorAt) / 1000, c.guessed ? HOLD_MAX : staleAfter(c) + 3);
       secs = Math.max(0, c.anchor - elapsed);
     }
     if (c.hold != null) {
