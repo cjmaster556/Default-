@@ -1136,7 +1136,9 @@ table {
 
 .clock-dbg {
   display: block;
-  margin-top: 4px;
+  max-width: 9.5rem;
+  margin: 4px auto 0;
+  white-space: normal;
   font-size: 0.65rem;
   font-weight: 500;
   color: var(--soft);
