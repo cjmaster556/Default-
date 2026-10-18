@@ -54,3 +54,32 @@ jobs:
       - name: Deploy
         if: steps.secrets.outputs.ready == 'true'
         run: $WRANGLER deploy
+
+      # Calls the live server and prints the shape of what ESPN and YouTube send
+      # back, so data problems show up in the deploy log.
+      - name: Check the live server
+        if: steps.secrets.outputs.ready == 'true'
+        continue-on-error: true
+        env:
+          SERVER: https://scoreline-alerts.cjmaster556.workers.dev
+        run: |
+          sleep 5
+          get() { curl -sS --max-time 20 "$SERVER$1"; }
+          echo "== health"; get /
+          for lg in football/nfl basketball/nba baseball/mlb hockey/nhl basketball/wnba; do
+            echo "== standings $lg (level 3)"
+            get "/espn/apis/v2/sports/$lg/standings?level=3" | jq -c '{name, groups: [.children[]? | {name, abbreviation, n: (.standings.entries | length), kids: [.children[]? | {name, n: (.standings.entries | length)}]}]}' | cut -c1-900
+            get "/espn/apis/v2/sports/$lg/standings?level=3" | jq -c '[.. | objects | select(.standings?.entries?) | .standings.entries[0]][0] | {team: .team.displayName, logo: .team.logos[0].href, stats: [.stats[] | "\(.name)|\(.abbreviation)|\(.displayValue)"]}' | cut -c1-1500
+          done
+          echo "== standings nfl (default level)"
+          get "/espn/apis/v2/sports/football/nfl/standings" | jq -c '{groups: [.children[]? | {name, n: (.standings.entries | length), kids: [.children[]? | .name]}]}'
+          echo "== cfb rankings"
+          get "/espn/apis/site/v2/sports/football/college-football/rankings" | jq -c '{polls: [.rankings[]? | .name], first: (.rankings[0].ranks[0] | {current, previous, points, recordSummary, team: .team.nickname, teamKeys: (.team | keys), keys: keys})}'
+          echo "== nfl news"
+          get "/espn/apis/site/v2/sports/football/nfl/news?limit=20" | jq -c '{n: (.articles | length), types: [.articles[].type] | unique, first: (.articles[0] | {headline, type, published, img: .images[0].url, web: .links.web.href, keys: keys}), media: ([.articles[] | select(.type == "Media")][0] | if . then {headline, keys: keys, links: .links} else null end)}' | cut -c1-2500
+          echo "== team news (BUF)"
+          get "/espn/apis/site/v2/sports/football/nfl/news?team=2&limit=5" | jq -c '[.articles[]?.headline]'
+          for lg in nfl nba mlb nhl wnba cfb; do
+            echo "== videos $lg"
+            get "/videos?league=$lg" | jq -c '{channel, n: (.items | length), first: [.items[0:4][] | {title, published}]}' | cut -c1-900
+          done

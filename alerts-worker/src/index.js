@@ -1,7 +1,8 @@
 // Scoreline alerts server. Every minute it checks ESPN for games involving
 // the teams people follow and sends a push notification when one of those
 // teams scores, or when their game starts or ends, so alerts arrive with the
-// app closed.
+// app closed. It also fetches standings, news and league highlight videos
+// for the app, which browsers can't always load from ESPN and YouTube directly.
 
 import { generateVapidKeys, sendPush } from "./push.js";
 
@@ -60,6 +61,8 @@ async function route(request, env) {
     const keys = await vapidKeys(env);
     return json({ publicKey: keys.publicKey });
   }
+  if (request.method === "GET" && url.pathname.startsWith("/espn/")) return proxyEspn(url);
+  if (request.method === "GET" && url.pathname === "/videos") return videos(env, url.searchParams.get("league"));
   if (request.method !== "POST") return json({ error: "Not found" }, 404);
 
   const body = await request.json();
@@ -111,6 +114,70 @@ async function sendTest(env, body) {
     url: SUBJECT,
   });
   return json({ ok: status < 300, status });
+}
+
+// ---------- ESPN pass-through ----------
+
+// Only the read-only ESPN feeds the app uses, with how long browsers may reuse each.
+const ESPN_FEEDS = [
+  { re: /^\/apis\/v2\/sports\/[a-z-]+\/[a-z-]+\/standings$/, ttl: 300 },
+  { re: /^\/apis\/site\/v2\/sports\/[a-z-]+\/[a-z-]+\/(news|rankings)$/, ttl: 300 },
+  { re: /^\/apis\/site\/v2\/sports\/[a-z-]+\/[a-z-]+\/teams$/, ttl: 3600 },
+];
+
+async function proxyEspn(url) {
+  const path = url.pathname.slice("/espn".length);
+  const feed = ESPN_FEEDS.find((f) => f.re.test(path));
+  if (!feed || url.search.length > 300) return json({ error: "Not an allowed ESPN feed" }, 404);
+  const res = await fetch(`https://site.api.espn.com${path}${url.search}`, { headers: { "User-Agent": "Scoreline" } });
+  return new Response(res.body, {
+    status: res.status,
+    headers: { "Content-Type": "application/json", "Cache-Control": `public, max-age=${feed.ttl}` },
+  });
+}
+
+// ---------- highlight videos ----------
+
+// Each league's official YouTube channel, by handle; the channel ID is looked up once and kept.
+const CHANNELS = { nfl: "@NFL", nba: "@NBA", wnba: "@WNBA", mlb: "@MLB", nhl: "@NHL", cfb: "@espncfb" };
+
+const decodeXml = (s) =>
+  s
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+
+async function channelId(env, league) {
+  const handle = CHANNELS[league];
+  const key = `yt:${handle}`;
+  const row = await env.DB.prepare("SELECT v FROM config WHERE k = ?").bind(key).first();
+  if (row) return row.v;
+  const page = await (await fetch(`https://www.youtube.com/${handle}`, { headers: { "Accept-Language": "en-US" } })).text();
+  const m = page.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/channel\/(UC[\w-]{22})"/) || page.match(/"channelId":"(UC[\w-]{22})"/);
+  if (!m) throw new Error(`Couldn't find the ${handle} channel`);
+  await env.DB.prepare("INSERT OR REPLACE INTO config (k, v) VALUES (?, ?)").bind(key, m[1]).run();
+  return m[1];
+}
+
+async function videos(env, league) {
+  if (!CHANNELS[league]) return json({ error: "Unknown league" }, 404);
+  const id = await channelId(env, league);
+  const xml = await (await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${id}`)).text();
+  const items = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].map(([, e]) => {
+    const pick = (re) => decodeXml((e.match(re) || [])[1] || "");
+    return {
+      id: pick(/<yt:videoId>([^<]+)<\/yt:videoId>/),
+      title: pick(/<title>([\s\S]*?)<\/title>/),
+      published: pick(/<published>([^<]+)<\/published>/),
+      thumbnail: pick(/<media:thumbnail url="([^"]+)"/),
+    };
+  });
+  return new Response(JSON.stringify({ league, channel: CHANNELS[league], items: items.filter((v) => v.id) }), {
+    headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=600" },
+  });
 }
 
 // ---------- keys and delivery ----------
