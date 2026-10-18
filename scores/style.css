@@ -1896,6 +1896,8 @@ table {
 }
 
 .video-card {
+  color: inherit;
+  text-decoration: none;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2060,4 +2062,21 @@ table {
     top: 9px;
     border-width: 6px 0 6px 10px;
   }
+}
+
+.video-blocked {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.video-blocked .primary-btn {
+  text-decoration: none;
 }

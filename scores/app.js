@@ -2070,13 +2070,36 @@
     return teamWords().some((x) => (!league || x.league === league) && t.includes(x.w));
   };
 
+  const watchURL = (id) => `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
+
+  // Some leagues don't allow their videos to play inside other apps (the NFL
+  // never does). Those open in YouTube instead; we learn the rest as we go.
+  const NO_EMBED_KEY = "scoreline.noEmbed";
+  function loadNoEmbed() {
+    try {
+      return { nfl: true, ...JSON.parse(localStorage.getItem(NO_EMBED_KEY) || "{}") };
+    } catch {
+      return { nfl: true };
+    }
+  }
+  const noEmbed = loadNoEmbed();
+  function markNoEmbed(league) {
+    noEmbed[league] = true;
+    try {
+      localStorage.setItem(NO_EMBED_KEY, JSON.stringify(noEmbed));
+    } catch {
+      /* remembered for this visit only */
+    }
+  }
+
+  // Every card is a real YouTube link; leagues that allow it play in the app instead.
   function videoCard(v) {
     return `
-      <button class="video-card" data-video="${esc(v.id)}" data-video-title="${esc(v.title)}">
+      <a class="video-card" href="${esc(watchURL(v.id))}" target="_blank" rel="noopener" data-video="${esc(v.id)}" data-video-title="${esc(v.title)}" data-league="${esc(v._league)}">
         <span class="thumb"><img src="${esc(v.thumbnail || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`)}" alt="" loading="lazy" onerror="this.remove()" /><span class="play" aria-hidden="true"></span></span>
         <span class="video-title">${esc(v.title)}</span>
-        <span class="meta-line">${esc([state.tabLeague.videos === "home" ? shortName(byKey[v._league]) : "", timeAgo(v.published)].filter(Boolean).join(" · "))}</span>
-      </button>`;
+        <span class="meta-line">${esc([state.tabLeague.videos === "home" ? shortName(byKey[v._league]) : "", noEmbed[v._league] ? "YouTube" : "", timeAgo(v.published)].filter(Boolean).join(" · "))}</span>
+      </a>`;
   }
 
   function videosHTML(items, league) {
@@ -2090,11 +2113,59 @@
       <div class="video-grid">${sorted.filter((v) => !mine.includes(v)).map(videoCard).join("")}</div>`;
   }
 
-  function openVideo(id, title) {
+  let ytAPI = null;
+  function loadYouTubeAPI() {
+    ytAPI ||= new Promise((resolve, reject) => {
+      if (window.YT?.Player) return resolve(window.YT);
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        prev?.();
+        resolve(window.YT);
+      };
+      const script = document.createElement("script");
+      script.src = "https://www.youtube.com/iframe_api";
+      script.onerror = () => reject(new Error("YouTube didn't load"));
+      document.head.appendChild(script);
+      setTimeout(() => reject(new Error("YouTube took too long")), 8000);
+    }).catch((err) => {
+      ytAPI = null;
+      throw err;
+    });
+    return ytAPI;
+  }
+
+  let player = null;
+  function openVideo(id, title, league) {
     $("video-title").textContent = title;
-    $("video-frame").src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=1&playsinline=1&rel=0`;
-    $("video-link").href = `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
+    $("video-link").href = watchURL(id);
+    const box = $("video-box");
+    box.innerHTML = '<div id="video-player"></div>';
     if (!videoDialog.open) videoDialog.showModal();
+    loadYouTubeAPI()
+      .then((YT) => {
+        if (!videoDialog.open) return;
+        player = new YT.Player("video-player", {
+          videoId: id,
+          host: "https://www.youtube-nocookie.com",
+          playerVars: { autoplay: 1, playsinline: 1, rel: 0 },
+          events: {
+            // 101 and 150: the owner doesn't allow playing it outside YouTube.
+            onError: (e) => {
+              if (e.data !== 101 && e.data !== 150) return;
+              markNoEmbed(league);
+              box.innerHTML = `
+                <div class="video-blocked">
+                  <p>${esc(byKey[league]?.name || "This league")} only lets this video play on YouTube.</p>
+                  <a class="primary-btn" href="${esc(watchURL(id))}" target="_blank" rel="noopener">Watch on YouTube</a>
+                </div>`;
+            },
+          },
+        });
+      })
+      .catch(() => {
+        // Without YouTube's player script, a plain embed still plays most videos.
+        box.innerHTML = `<iframe title="Highlight video" src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=1&playsinline=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>`;
+      });
   }
 
   // ---- news ----
@@ -2223,7 +2294,11 @@
 
   panelEl.addEventListener("click", (e) => {
     const video = e.target.closest("[data-video]");
-    if (video) openVideo(video.dataset.video, video.dataset.videoTitle);
+    // Leagues that block in-app playback just follow the link to YouTube.
+    if (video && !noEmbed[video.dataset.league]) {
+      e.preventDefault();
+      openVideo(video.dataset.video, video.dataset.videoTitle, video.dataset.league);
+    }
     if (e.target.closest("[data-retry]")) loadTab(true);
   });
 
@@ -2233,7 +2308,13 @@
   });
   // Stop playback when the player closes.
   videoDialog.addEventListener("close", () => {
-    $("video-frame").src = "about:blank";
+    try {
+      player?.destroy();
+    } catch {
+      /* already gone */
+    }
+    player = null;
+    $("video-box").innerHTML = "";
   });
 
   toolbarEl.addEventListener("click", (e) => {
