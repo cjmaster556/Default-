@@ -33,18 +33,33 @@ Plain HTML/CSS/JS, no build step. `app.js` is one IIFE (about 3,000 lines), orga
     (`PERIOD_BREAK`); on the first look, guess running from the last play (capped at `HOLD_MAX`); never jump back up for overshoots of
     8 seconds or less (hold instead); a new period waits for the clock to move.
   - Add `?debug` to the URL to show what the clock logic sees.
-- **Alerts**: the bell subscribes to Web Push through the Worker (`config.js` has the server URL), with in-app notifications as a fallback.
+- **Alerts**: the bell opens the Alerts sheet (`renderAlertSettings`). Its switch subscribes to Web Push through the Worker
+  (`config.js` has the server URL), with in-app notifications as a fallback. Settings (`scoreline.alertSettings`): start, scores
+  (all / close / off), close finishes, red zone, finals, live score notification, quiet hours. Reminders (`scoreline.reminders`)
+  come from the bell on upcoming game cards and the "Remind me" button in the game hero. `syncPush` sends teams, settings
+  (with the phone's time zone) and reminders to `/subscribe`.
+- **Team pages** (`openTeam`): any element with `teamLink(league, team)` attributes (`data-team-page`) opens one: game hero logo/name,
+  standings and playoff rows, bracket teams. Schedule, roster (football is grouped), team news (filtered by category teamId), highlights.
+- **Win probability** (`winProbCard`): summary `winprobability` (`homeWinPercentage` per `playId`); periods come from play ids in drives/plays.
+- **Playoffs** (Standings → Playoffs): `PLAYOFF_SPOTS` cut lines for the seeding race; bracket from postseason scoreboards.
+  ESPN's scoreboard rejects day ranges but takes whole months (`dates=202610&seasontype=3`), so `postseasonMonths` fetches each month.
+  Round names come from `notes[0].headline` (series.title is just "Playoff Series"); "If Necessary" placeholder games and TBD teams are skipped.
+- **Share card** (`scoreCard`): 1080×1080 canvas in team colors; logos load through the Worker's `/logo` so the canvas can be exported.
 - **Service worker** (`sw.js`): network-first with `cache: "no-cache"`. **Bump `CACHE` (scoreline-vN) with each release.**
   The app reloads itself when a new version takes over.
 - **Demo mode**: `?demo` uses `demo.js` sample data shaped like the real feeds. Use it for local testing, because this sandbox can't reach ESPN or YouTube.
 
 ## Alerts server (`alerts-worker/`)
 
-Cloudflare Worker on the free plan, with a D1 database (`schema.sql`: subs, games, config, videos). Its cron runs every minute.
+Cloudflare Worker on the free plan, with a D1 database (`schema.sql`: subs, games, config, videos, prefs, gamex). Its cron runs every minute.
+`schema.sql` only uses CREATE IF NOT EXISTS, so new columns need a new table (that's why prefs and gamex exist).
 
-- Push alerts: followed team scores, game start, final. A second pass runs 28 seconds later while a game is live. Web Push is hand-rolled (`src/push.js`, WebCrypto).
+- Push alerts follow each phone's settings (`prefs` table, `cleanSettings`): start, scores (basketball sends quarter summaries instead
+  of every basket), close finishes (`isLateClose`), red zone, finals, quiet hours (`isQuiet`, in the phone's time zone), reminders (start alert).
+  The live score notification is a silent push with the game's tag, sent when the status line changes, so it updates in place; alerts use
+  the same tag and replace it. `gamex` remembers per-game status line, period, red zone and the close-game flag. A second pass runs 28 seconds later while a game is live. Web Push is hand-rolled (`src/push.js`, WebCrypto).
   VAPID keys are generated on first run and stored in D1.
-- `/espn/...` passes through allowed ESPN feeds. `/videos?league=` serves league YouTube videos, with channel IDs resolved from handles and cached.
+- `/espn/...` passes through allowed ESPN feeds (including team schedule/roster). `/logo?src=` proxies espncdn.com logos with CORS for the share card. `/videos?league=` serves league YouTube videos, with channel IDs resolved from handles and cached.
   Videos are saved for 3 days because the RSS feed only holds 15.
 - `/nhl/...` and `/nba/...` pass through the leagues' own live feeds (`api-web.nhle.com/v1/score/now`, `cdn.nba.com` liveData scoreboard), with an `X-Data-Age` header.
 - **Deploys**: `.github/workflows/alerts-worker.yml` runs on any push touching `alerts-worker/` or the workflow (Node 22, wrangler 4.145.0).
@@ -57,6 +72,8 @@ Cloudflare Worker on the free plan, with a D1 database (`schema.sql`: subs, game
 - Serve locally with `python3 -m http.server 8766` from the repo root, run in the background (sandbox resets kill `&` jobs).
 - Use Playwright with `executablePath: '/opt/pw-browsers/chromium'`. Save screenshots to the scratchpad, never the repo, because the stop hook flags untracked files.
 - Simulate ESPN with `page.route('https://site.api.espn.com/**', ...)` for clock tests.
+- Worker logic can be tested locally with `wrangler dev --local --test-scheduled --var ESPN_BASE:http://localhost:9301/sports`,
+  a mock ESPN + push endpoint (decrypting with `http_ece`), and `/__scheduled` to run the cron. The scratchpad copy is not kept between sessions.
 
 ## In progress / ideas
 
@@ -64,4 +81,6 @@ Cloudflare Worker on the free plan, with a D1 database (`schema.sql`: subs, game
   flags directly (no guessing). NBA games feed the NBA's `gameClock` (ISO, e.g. PT05M32.00S) into the usual rules. Games are matched
   to ESPN events by team code (`LEAGUE_ABBR` fixes differences). Verify against a real NBA game once the season is
   under way; there was no live NBA data to check against when this was built.
-- Ideas the user hasn't asked for yet: game-start reminders, choosing which alerts to get, moving the app to the main branch.
+- Built from the user's "what could make this better" list: live score notification, reminders, alert settings, team pages,
+  win probability, playoffs/brackets, share cards. Not wanted (for now): more leagues, moving to the main branch or a custom domain.
+- Unverified on a real phone: the Watch button's ESPN app link, the live score notification's silent updates, sharing the image file.

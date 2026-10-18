@@ -26,6 +26,7 @@ you follow scores, or when its game starts or ends, even with the app closed.
 ## Endpoints
 
 - `GET /vapid`: the public key browsers subscribe with
-- `POST /subscribe`: `{ subscription, teams: [{ league, id }] }`
+- `POST /subscribe`: `{ subscription, teams: [{ league, id }], reminders: [{ league, id, date }], settings: { start, scores, close, redzone, finals, live, quiet: { from, to }, tz } }`
 - `POST /unsubscribe`: `{ endpoint }`
 - `POST /test`: `{ endpoint }`, sends a test alert
+- `GET /logo?src=`: an espncdn.com team logo, served so the app can draw it into share pictures
