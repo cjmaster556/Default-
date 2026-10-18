@@ -135,11 +135,8 @@ jobs:
           echo "== win probability (finished NFL game)"
           id=$(curl -sS --max-time 20 "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard" | jq -r '[.events[] | select(.status.type.state == "post")][0].id')
           curl -sS --max-time 20 "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=$id" | jq -c '{n: ((.winprobability // []) | length), first: (.winprobability[0] // {}), last: (.winprobability[-1] // {}), playKeys: ((.drives.previous[0].plays[0] // {}) | keys)}' | cut -c1-900
-          echo "== postseason scoreboards (bracket data)"
-          SUM='{n: (.events | length), rounds: ([.events[] | (.competitions[0].notes[0].headline // "-" | sub(" - Game [0-9]+$"; ""))] | group_by(.) | map({r: .[0], n: length})), last: (.events[-1] | {date, name, note: .competitions[0].notes[0].headline, series: .competitions[0].series, type: .competitions[0].type.abbreviation, st: .status.type.state})}'
-          for u in "baseball/mlb/scoreboard?dates=202610" "baseball/mlb/scoreboard?dates=202610&seasontype=3&limit=200" "baseball/mlb/scoreboard?dates=20261012-20261018" "baseball/mlb/scoreboard?dates=20261015-20261016" "baseball/mlb/scoreboard?seasontype=3&dates=2026&limit=300" "basketball/wnba/scoreboard?dates=202609&limit=200" "basketball/wnba/scoreboard?dates=202610&limit=200" "football/nfl/scoreboard?seasontype=3&week=1&dates=2025" "football/nfl/scoreboard?seasontype=3&week=5&dates=2025" "basketball/nba/scoreboard?dates=202605&limit=200"; do
-            echo "-- $u"
-            curl -sS --max-time 30 -o /tmp/p.json -w "%{http_code} %{size_download}\n" "https://site.api.espn.com/apis/site/v2/sports/$u"
-            jq -c "$SUM" /tmp/p.json 2>/dev/null | cut -c1-1400 || head -c 200 /tmp/p.json
+          echo "== postseason (bracket data, this month)"
+          for lg in baseball/mlb basketball/wnba; do
+            curl -sS --max-time 30 "https://site.api.espn.com/apis/site/v2/sports/$lg/scoreboard?seasontype=3&dates=$(date +%Y%m)&limit=300" | jq -c --arg lg "$lg" '{league: $lg, n: (.events | length), rounds: ([.events[] | (.competitions[0].notes[0].headline // "-" | sub(" - Game [0-9]+.*$"; ""))] | unique)}' | cut -c1-600
           done
           echo "== logo proxy"; curl -sS -o /dev/null -w "%{http_code} %{content_type} %{size_download}\n" "$SERVER/logo?src=https://a.espncdn.com/i/teamlogos/nfl/500/buf.png"

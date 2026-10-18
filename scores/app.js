@@ -822,7 +822,7 @@
         <input type="checkbox" class="switch" data-setting="${key}"${checked ? " checked" : ""}${disabled ? " disabled" : ""} />
       </label>`;
     const seg = (key, value, options) => `
-      <div class="seg" role="radiogroup">
+      <div class="set-seg" role="radiogroup">
         ${options.map(([v, label]) => `<button role="radio" aria-checked="${v === value}" class="${v === value ? "on" : ""}" data-seg="${key}" data-value="${v}"${on ? "" : " disabled"}>${label}</button>`).join("")}
       </div>`;
     const reminders = [...state.reminders.values()].sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
@@ -838,7 +838,7 @@
         <div class="set-row${on ? "" : " off"}">
           <span class="set-text"><span class="set-label">Scores</span><span class="set-desc">Basketball sends quarter scores instead of every basket</span></span>
         </div>
-        <div class="set-row seg-row">${seg("scores", set.scores, [["all", "Every score"], ["close", "Close games"], ["off", "Off"]])}</div>
+        <div class="set-row set-seg-row">${seg("scores", set.scores, [["all", "Every score"], ["close", "Close games"], ["off", "Off"]])}</div>
         ${sw("close", set.close, "Close finishes", "One alert when a game is close near the end")}
         ${sw("redzone", set.redzone, "Red zone", "When your team gets inside the 20 (football)")}
         ${sw("finals", set.finals, "Final scores")}
@@ -2797,8 +2797,9 @@
   function tabVariants(tab, league) {
     if (tab !== "standings") return null;
     if (league === "cfb") return [{ key: "ap", label: "AP Top 25" }, { key: "coaches", label: "Coaches Poll" }];
-    if (league === "wnba") return null;
-    return [{ key: "division", label: "Division" }, { key: "conference", label: "Conference" }];
+    const playoffs = { key: "playoffs", label: "Playoffs" };
+    if (league === "wnba") return [{ key: "conference", label: "Standings" }, playoffs];
+    return [{ key: "division", label: "Division" }, { key: "conference", label: "Conference" }, playoffs];
   }
 
   const tabVariant = (tab, league) => {
@@ -2835,6 +2836,7 @@
     if (tab === "standings") {
       const path = byKey[league].path;
       if (league === "cfb") return serverJSON(`/espn/apis/site/v2/sports/${path}/rankings`);
+      if (variant === "playoffs") return fetchPlayoffs(league);
       return serverJSON(`/espn/apis/v2/sports/${path}/standings${variant === "division" ? "?level=3" : ""}`);
     }
     const leagues = league === "home" ? favLeagues() : [league];
@@ -2875,19 +2877,181 @@
         ? `<p class="loading">Couldn't load ${TAB_TITLES[tab].toLowerCase()} (${esc(entry.error.message)}). <button class="link-btn" data-retry>Try again</button></p>`
         : '<p class="loading">Loading…</p>';
     } else if (tab === "standings") {
-      html = league === "cfb" ? rankingsHTML(entry.data, variant) : standingsHTML(entry.data, league, variant);
+      html =
+        league === "cfb"
+          ? rankingsHTML(entry.data, variant)
+          : variant === "playoffs"
+            ? playoffsHTML(entry.data, league)
+            : standingsHTML(entry.data, league, variant);
     } else if (tab === "news") {
       html = newsHTML(entry.data, league);
     } else {
       html = videosHTML(entry.data, league);
     }
     panelEl.innerHTML = html;
+    const bracket = panelEl.querySelector(".bracket");
+    if (bracket) bracket.scrollLeft = bracket.scrollWidth;
     keepActiveChipInView();
   }
 
   function keepActiveChipInView() {
     const chip = navEl.querySelector(".chip.active");
     if (chip) navEl.scrollLeft = Math.max(0, chip.offsetLeft - navEl.offsetLeft - 16);
+  }
+
+  // ---- playoffs: the bracket once the postseason starts, and the seeding race before it ----
+
+  // How many teams make it from each conference (or the whole league), and the play-in spots after them.
+  const PLAYOFF_SPOTS = { nfl: { in: 7 }, nba: { in: 6, playIn: 4 }, nhl: { in: 8 }, mlb: { in: 6 }, wnba: { in: 8, wholeLeague: true } };
+
+  // The months this season's postseason falls in (an upcoming one is empty until it starts).
+  // ESPN's scoreboard takes a whole month at a time, not a range of days.
+  function postseasonMonths(league) {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth() + 1;
+    const months = (year, list) => list.map((mm) => `${year}${mm}`);
+    switch (league) {
+      case "mlb":
+        return months(m >= 3 ? y : y - 1, ["09", "10", "11"]);
+      case "wnba":
+        return months(m >= 4 ? y : y - 1, ["09", "10"]);
+      case "nfl":
+        return months(m >= 8 ? y + 1 : y, ["01", "02"]);
+      default:
+        return months(m >= 7 ? y + 1 : y, ["04", "05", "06"]);
+    }
+  }
+
+  async function fetchPlayoffs(league) {
+    const path = byKey[league].path;
+    const boards = demoMode
+      ? [Promise.resolve(window.SCORES_DEMO.postseason?.(league) || { events: [] })]
+      : postseasonMonths(league).map((month) => fetchJSON(`${API}/${path}/scoreboard?seasontype=3&dates=${month}&limit=300`));
+    const [standings, ...posts] = await Promise.allSettled([serverJSON(`/espn/apis/v2/sports/${path}/standings`), ...boards]);
+    if (standings.status === "rejected" && posts.every((r) => r.status === "rejected")) throw standings.reason;
+    const seen = new Set();
+    const events = posts
+      .flatMap((r) => (r.status === "fulfilled" ? r.value.events || [] : []))
+      .filter((ev) => !seen.has(ev.id) && seen.add(ev.id));
+    return { standings: standings.value || null, events };
+  }
+
+  function playoffsHTML(data, league) {
+    const bracket = bracketHTML(data.events || [], league);
+    const picture = data.standings ? pictureHTML(data.standings, league, bracket ? "Seeds" : "Playoff picture") : "";
+    if (!bracket && !picture) return '<p class="loading">No playoff picture yet.</p>';
+    return bracket + picture;
+  }
+
+  // Postseason games grouped into rounds, and each round's games into series.
+  function bracketHTML(events, league) {
+    if (!events.length) return "";
+    const rounds = new Map();
+    for (const ev of events.slice().sort((a, b) => new Date(a.date) - new Date(b.date))) {
+      const comp = ev.competitions?.[0] || {};
+      const list = comp.competitors || [];
+      // Skip games whose teams aren't known yet ("Rays/Guardians", "TBD").
+      if (list.length !== 2 || list.some((c) => !c.team?.id || /tbd|\//i.test(`${c.team?.displayName} ${c.team?.abbreviation}`))) continue;
+      const headline = comp.notes?.[0]?.headline || "Playoffs";
+      const label = headline.replace(/\s*-\s*Game \d+.*$/i, "").trim();
+      const round = roundColumn(label);
+      if (!rounds.has(round)) rounds.set(round, new Map());
+      const ids = list.map((c) => String(c.team.id)).sort().join("-");
+      const series = rounds.get(round);
+      // Later games overwrite earlier ones, so each series shows its latest
+      // state, except "if necessary" games that haven't been played.
+      if (series.has(ids) && /if necessary/i.test(headline) && ev.status?.type?.state === "pre") continue;
+      series.set(ids, { ev, comp, label });
+    }
+    if (!rounds.size) return "";
+    const columns = [...rounds]
+      .map(([name, series]) => {
+        const cards = [...series.values()]
+          .map(({ ev, comp, label }) => {
+            const list = comp.competitors.slice().sort((a, b) => (a.homeAway === "away" ? -1 : 1) - (b.homeAway === "away" ? -1 : 1));
+            const st = ev.status?.type?.state;
+            const ser = comp.series;
+            const wins = (c) => ser?.competitors?.find((x) => String(x.id) === String(c.team.id))?.wins;
+            const single = !ser || ser.totalCompetitions === 1 || ser.type === "single";
+            const done = single ? st === "post" : !!ser?.completed;
+            const winner = (c) => (single ? c.winner === true : done && (wins(c) || 0) > (wins(list.find((o) => o !== c)) || 0));
+            const value = (c) => (single ? (st === "pre" ? "" : (c.score?.displayValue ?? c.score ?? "")) : (wins(c) ?? ""));
+            const row = (c) => {
+              const t = c.team;
+              const seed = c.curatedRank?.current && c.curatedRank.current < 99 ? c.curatedRank.current : c.seed;
+              return `<li class="${winner(c) ? "won" : done ? "lost" : ""}" ${teamLink(league, t)}>
+                ${logo(t, "xs")}<span class="br-name">${seed ? `<small>${esc(seed)}</small>` : ""}${esc(t.abbreviation || t.shortDisplayName)}</span><b>${esc(value(c))}</b>
+              </li>`;
+            };
+            const status = [
+              label !== name ? label : "",
+              single ? (st === "pre" ? startText(ev) : ev.status?.type?.shortDetail || "") : ser?.summary || "",
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            return `<div class="br-match${st === "in" ? " live" : ""}"><ul>${list.map(row).join("")}</ul><p>${esc(status)}</p></div>`;
+          })
+          .join("");
+        return `<section class="br-round"><h3>${esc(name)}</h3>${cards}</section>`;
+      })
+      .join("");
+    return `<h2 class="panel-h">Bracket</h2><div class="bracket">${columns}</div>`;
+  }
+
+  // Both halves of a round share a column: "ALDS" and "NLDS" are the Division Series.
+  function roundColumn(label) {
+    return label
+      .replace(/^(AL|NL)WC$/i, "Wild Card")
+      .replace(/^(AL|NL)DS$/i, "Division Series")
+      .replace(/^(AL|NL)CS$/i, "League Championship")
+      .replace(/^(AL|NL|AFC|NFC|East(ern)?|West(ern)?)( Conference)?\s+/i, "")
+      .trim();
+  }
+
+  function pictureHTML(data, league, title = "Playoff picture") {
+    const spots = PLAYOFF_SPOTS[league];
+    let groups = standingGroups(data);
+    if (!groups.length || !spots) return "";
+    if (spots.wholeLeague) groups = [{ title: "League", entries: groups.flatMap((g) => g.entries) }];
+    const num = (st) => Number(st?.value ?? st?.displayValue) || 0;
+    const clinchMarks = new Set();
+    const cards = groups
+      .map((g) => {
+        const rows = g.entries
+          .map((e) => ({ e, s: statMap(e) }))
+          .sort((a, b) => (num(a.s.playoffSeed) || 99) - (num(b.s.playoffSeed) || 99) || num(b.s.winPercent) - num(a.s.winPercent));
+        // With the whole league in one list, ESPN's seeds are per conference; rank by record instead.
+        if (spots.wholeLeague) rows.sort((a, b) => num(b.s.winPercent) - num(a.s.winPercent) || num(b.s.wins) - num(a.s.wins));
+        const show = Math.min(rows.length, spots.in + (spots.playIn || 0) + 3);
+        const body = rows
+          .slice(0, show)
+          .map(({ e, s }, i) => {
+            const t = e.team || {};
+            const mark = s.clincher?.displayValue && s.clincher.displayValue !== "-" ? s.clincher.displayValue : "";
+            if (mark) clinchMarks.add(mark);
+            const zone = i < spots.in ? "in" : i < spots.in + (spots.playIn || 0) ? "playin" : "out";
+            const divider =
+              i === spots.in
+                ? `<li class="po-cut">${spots.playIn ? "Play-in" : "Out"}</li>`
+                : spots.playIn && i === spots.in + spots.playIn
+                  ? '<li class="po-cut">Out</li>'
+                  : "";
+            const record = s.overall?.displayValue || [s.wins?.displayValue, s.losses?.displayValue].filter(Boolean).join("-");
+            return `${divider}<li class="po-row ${zone}${state.favorites.has(`${league}:${t.id}`) ? " mine" : ""}" ${teamLink(league, { ...t, logo: t.logos?.[0]?.href })}>
+              <span class="po-seed">${i + 1}</span>
+              ${logo({ logo: t.logos?.[0]?.href, color: t.color }, "xs")}
+              <span class="po-name">${esc(t.shortDisplayName || t.displayName || t.abbreviation)}${mark ? `<sup class="clinch">${esc(mark)}</sup>` : ""}</span>
+              <span class="po-rec">${esc(record)}${league === "nhl" && s.points ? ` · ${esc(s.points.displayValue)} pts` : ""}</span>
+            </li>`;
+          })
+          .join("");
+        return `<section class="st-card"><h3>${esc(g.title)}</h3><ol class="po-list">${body}</ol></section>`;
+      })
+      .join("");
+    const legend = { x: "Clinched playoff spot", y: "Clinched division", z: "Clinched top seed", e: "Eliminated", w: "Clinched wild card", "*": "Clinched top seed" };
+    const keys = [...clinchMarks].filter((k) => legend[k]);
+    return `<h2 class="panel-h">${title}</h2>${cards}${keys.length ? `<p class="panel-note">${keys.map((k) => `<b>${esc(k)}</b> ${legend[k]}`).join(" · ")}</p>` : ""}`;
   }
 
   // ---- standings ----
@@ -3362,16 +3526,154 @@
   detailEl.addEventListener("scroll", updateStuck, { passive: true });
 
   // Share the score: the phone's share sheet where there is one, otherwise copy it.
+  // Share the score as a picture in the teams' colors, with the share sheet,
+  // a download, or plain text as the fallbacks.
+  const shareDialog = $("share-dialog");
+  let shareFile = null;
+
+  const shareText = (ev) => {
+    const { away, home } = sides(ev.competitions?.[0]);
+    return gameState(ev) === "pre"
+      ? `${away?.team?.abbreviation} at ${home?.team?.abbreviation} · ${startText(ev, true)}`
+      : `${away?.team?.abbreviation} ${away?.score} – ${home?.score} ${home?.team?.abbreviation} · ${ev.status?.type?.shortDetail || ""}`;
+  };
+  const shareURL = (ev) => `${location.origin}${location.pathname}#${ev._league}`;
+
+  // Logos come through the alerts server so the picture can be saved (browsers
+  // won't export a canvas that drew images from a site that didn't allow it).
+  function loadLogo(src) {
+    return new Promise((resolve) => {
+      if (!src || !ALERTS_SERVER || demoMode) return resolve(null);
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = `${ALERTS_SERVER}/logo?src=${encodeURIComponent(src)}`;
+      setTimeout(() => resolve(null), 4000);
+    });
+  }
+
+  async function scoreCard(ev) {
+    const S = 1080;
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = S;
+    const g = canvas.getContext("2d");
+    const { away, home } = sides(ev.competitions?.[0]);
+    const st = gameState(ev);
+    const ca = vividColor(away?.team);
+    const ch = vividColor(home?.team);
+
+    const bg = g.createLinearGradient(0, 0, S, 0);
+    bg.addColorStop(0, ca);
+    bg.addColorStop(0.3, ca);
+    bg.addColorStop(0.7, ch);
+    bg.addColorStop(1, ch);
+    g.fillStyle = bg;
+    g.fillRect(0, 0, S, S);
+    const shade = g.createLinearGradient(0, 0, 0, S);
+    shade.addColorStop(0, "rgba(0,0,0,0.05)");
+    shade.addColorStop(1, "rgba(0,0,0,0.55)");
+    g.fillStyle = shade;
+    g.fillRect(0, 0, S, S);
+
+    const font = (weight, size) => `${weight} ${size}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillStyle = "rgba(255,255,255,0.8)";
+    g.font = font(700, 34);
+    const label = [byKey[ev._league]?.name, note(ev.competitions?.[0] || {})].filter(Boolean).join(" · ").toUpperCase();
+    g.fillText(label.length > 48 ? `${label.slice(0, 46)}…` : label, S / 2, 100);
+    g.fillStyle = st === "in" ? "#ff6961" : "#fff";
+    g.font = font(800, 52);
+    g.fillText(st === "pre" ? startText(ev, true) : ev.status?.type?.shortDetail || "", S / 2, 170);
+
+    const [la, lh] = await Promise.all([loadLogo(away?.team?.logo), loadLogo(home?.team?.logo)]);
+    const lost = (c) => st === "post" && ev.competitions?.[0]?.competitors?.some((o) => o !== c && o.winner);
+    for (const [c, img, x] of [
+      [away, la, S * 0.27],
+      [home, lh, S * 0.73],
+    ]) {
+      const size = 250;
+      if (img) {
+        g.save();
+        g.shadowColor = "rgba(0,0,0,0.35)";
+        g.shadowBlur = 24;
+        g.drawImage(img, x - size / 2, 420 - size / 2, size, size);
+        g.restore();
+      } else {
+        g.fillStyle = "rgba(255,255,255,0.18)";
+        g.beginPath();
+        g.arc(x, 420, size / 2.3, 0, Math.PI * 2);
+        g.fill();
+      }
+      g.globalAlpha = lost(c) ? 0.55 : 1;
+      g.fillStyle = "#fff";
+      g.font = font(800, 64);
+      g.fillText(c?.team?.abbreviation || "", x, 600);
+      g.fillStyle = "rgba(255,255,255,0.75)";
+      g.font = font(600, 36);
+      g.fillText(recordText(c), x, 655);
+      if (st !== "pre") {
+        g.fillStyle = "#fff";
+        g.font = font(800, 220);
+        g.fillText(String(c?.score ?? ""), x, 830);
+      }
+      g.globalAlpha = 1;
+    }
+    if (st === "pre") {
+      g.fillStyle = "rgba(255,255,255,0.85)";
+      g.font = font(800, 90);
+      g.fillText("vs", S / 2, 420);
+    }
+
+    g.fillStyle = "rgba(255,255,255,0.7)";
+    g.font = font(700, 32);
+    g.fillText(`Scoreline · ${new Date(ev.date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`, S / 2, 1010);
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  }
+
   $("share-game").addEventListener("click", async () => {
     const ev = state.openGame?.event;
     if (!ev) return;
     const { away, home } = sides(ev.competitions?.[0]);
-    const st = gameState(ev);
-    const text =
-      st === "pre"
-        ? `${away?.team?.abbreviation} at ${home?.team?.abbreviation} · ${startText(ev, true)}`
-        : `${away?.team?.abbreviation} ${away?.score} – ${home?.score} ${home?.team?.abbreviation} · ${ev.status?.type?.shortDetail || ""}`;
-    const url = `${location.origin}${location.pathname}#${ev._league}`;
+    $("share-img").removeAttribute("src");
+    shareDialog.showModal();
+    let blob = null;
+    try {
+      blob = await scoreCard(ev);
+    } catch {
+      /* drawing failed; text sharing still works */
+    }
+    shareFile = blob ? new File([blob], `${away?.team?.abbreviation || "away"}-${home?.team?.abbreviation || "home"}.png`, { type: "image/png" }) : null;
+    if (blob) $("share-img").src = URL.createObjectURL(blob);
+    $("share-image").hidden = !(shareFile && navigator.canShare?.({ files: [shareFile] }));
+    $("save-image").hidden = !shareFile;
+    shareDialog.dataset.key = ev._key;
+  });
+
+  $("share-image").addEventListener("click", async () => {
+    const ev = state.openGame?.event;
+    if (!ev || !shareFile) return;
+    try {
+      await navigator.share({ files: [shareFile], text: shareText(ev), url: shareURL(ev) });
+    } catch {
+      /* share sheet dismissed */
+    }
+  });
+
+  $("save-image").addEventListener("click", () => {
+    if (!shareFile) return;
+    const a = document.createElement("a");
+    a.href = $("share-img").src;
+    a.download = shareFile.name;
+    a.click();
+  });
+
+  $("share-text").addEventListener("click", async () => {
+    const ev = state.openGame?.event;
+    if (!ev) return;
+    const text = shareText(ev);
+    const url = shareURL(ev);
     try {
       if (navigator.share) await navigator.share({ title: ev.name || "Scoreline", text, url });
       else {
@@ -3381,6 +3683,15 @@
     } catch {
       /* share sheet dismissed */
     }
+  });
+
+  $("close-share").addEventListener("click", () => shareDialog.close());
+  shareDialog.addEventListener("click", (e) => {
+    if (e.target === shareDialog) shareDialog.close();
+  });
+  shareDialog.addEventListener("close", () => {
+    const src = $("share-img").src;
+    if (src.startsWith("blob:")) URL.revokeObjectURL(src);
   });
 
   // Swipe sideways between games, like flipping through cards.

@@ -522,6 +522,35 @@
     if (!divisions) return { name: byName[league], children: [table("Conference A", rows.slice(0, Math.ceil(rows.length / 2))), table("Conference B", rows.slice(Math.ceil(rows.length / 2)))] };
     return { name: byName[league], children: [group("Conference A", "A", [table("Division 1", rows.slice(0, 4)), table("Division 2", rows.slice(4))])] };
   }
+  // A few postseason series, shaped like ESPN's postseason scoreboard.
+  function postseason(league) {
+    if (league !== "mlb") return { events: [] };
+    const extra = [team("mlb", 30, "TB", "Tampa Bay Rays", "Rays", "092c5c"), team("mlb", 5, "CLE", "Cleveland Guardians", "Guardians", "002b5c"), team("mlb", 22, "PHI", "Philadelphia Phillies", "Phillies", "e81828")];
+    const [LAD, NYY, NYM] = T.mlb;
+    const [TB, CLE, PHI] = extra;
+    let n = 0;
+    const game = (round, a, b, aw, bw, state, total, summary, daysAgo) => ({
+      id: `8${n++}`,
+      date: new Date(start - daysAgo * 86400000).toISOString(),
+      status: { type: { state, shortDetail: state === "post" ? "Final" : state === "in" ? "Top 6th" : "" } },
+      competitions: [{
+        notes: [{ headline: `${round} - Game ${aw + bw + (state === "post" ? 0 : 1)}` }],
+        series: { type: "playoff", title: "Playoff Series", summary, completed: state === "post" && Math.max(aw, bw) > total / 2, totalCompetitions: total, competitors: [{ id: a.id, wins: aw }, { id: b.id, wins: bw }] },
+        competitors: [{ homeAway: "away", team: a, score: "3" }, { homeAway: "home", team: b, score: "5" }],
+      }],
+    });
+    return {
+      events: [
+        game("ALWC", NYY, CLE, 1, 2, "post", 3, "CLE wins series 2-1", 18),
+        game("NLWC", PHI, NYM, 2, 0, "post", 3, "PHI wins series 2-0", 18),
+        game("ALDS", CLE, TB, 1, 3, "post", 5, "TB wins series 3-1", 12),
+        game("NLDS", PHI, LAD, 0, 3, "post", 5, "LAD wins series 3-0", 12),
+        game("ALCS", CLE, TB, 1, 3, "in", 7, "TB leads series 3-1", 0),
+        game("NLCS", LAD, NYM, 2, 2, "pre", 7, "Series tied 2-2", -1),
+      ],
+    };
+  }
+
   const byName = { nfl: "National Football League", nba: "National Basketball Association", mlb: "Major League Baseball", wnba: "WNBA" };
 
   function rankings() {
@@ -613,5 +642,5 @@
     throw new Error("not in demo");
   }
 
-  window.SCORES_DEMO = { scoreboard, summary, teams, team: teamNext, feed };
+  window.SCORES_DEMO = { scoreboard, summary, teams, team: teamNext, feed, postseason };
 })();
