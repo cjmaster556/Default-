@@ -45,6 +45,7 @@ function corsHeaders(request, env) {
     "Access-Control-Allow-Origin": ok ? origin : allowed[0] || "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Expose-Headers": "X-Data-Age",
     Vary: "Origin",
   };
 }
@@ -62,6 +63,7 @@ async function route(request, env) {
     return json({ publicKey: keys.publicKey });
   }
   if (request.method === "GET" && url.pathname.startsWith("/espn/")) return proxyEspn(url);
+  if (request.method === "GET" && /^\/(nhl|nba)\//.test(url.pathname)) return proxyLeague(url);
   if (request.method === "GET" && url.pathname === "/videos") return videos(env, url.searchParams.get("league"));
   if (request.method !== "POST") return json({ error: "Not found" }, 404);
 
@@ -133,6 +135,34 @@ async function proxyEspn(url) {
   return new Response(res.body, {
     status: res.status,
     headers: { "Content-Type": "application/json", "Cache-Control": `public, max-age=${feed.ttl}` },
+  });
+}
+
+// ---------- league clock feeds ----------
+
+// The NHL's and NBA's own live feeds carry a better game clock than ESPN's
+// (the NHL's says whether it's running). Browsers can't read them directly.
+const LEAGUE_FEEDS = {
+  nhl: { origin: "https://api-web.nhle.com", re: /^\/v1\/(score\/now|score\/\d{4}-\d{2}-\d{2}|gamecenter\/\d+\/(landing|play-by-play))$/ },
+  nba: {
+    origin: "https://cdn.nba.com",
+    re: /^\/static\/json\/liveData\/(scoreboard\/todaysScoreboard_00|playbyplay\/playbyplay_\d+|boxscore\/boxscore_\d+)\.json$/,
+    headers: { Referer: "https://www.nba.com/", Origin: "https://www.nba.com" },
+  },
+};
+
+async function proxyLeague(url) {
+  const [, league, ...rest] = url.pathname.split("/");
+  const feed = LEAGUE_FEEDS[league];
+  const path = `/${rest.join("/")}`;
+  if (!feed || !feed.re.test(path)) return json({ error: "Not an allowed feed" }, 404);
+  const res = await fetch(`${feed.origin}${path}`, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; Scoreline)", Accept: "application/json", ...(feed.headers || {}) },
+  });
+  // How old the league's cached copy is, so the app can run the clock from the right moment.
+  return new Response(res.body, {
+    status: res.status,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Data-Age": res.headers.get("age") || "0" },
   });
 }
 
