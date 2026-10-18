@@ -101,3 +101,12 @@ jobs:
             echo "$name ($status): espn clips=$espn, youtube=$ytn, espn video stories=$nn"
           done
           echo "-- newest NFL YouTube video:"; echo "$yt" | jq -r '.items | [.[0].published, .[-1].published] | "newest \(.[0]), oldest \(.[1])"'
+          echo "== how fresh is ESPN's data? (live NFL game, normal vs cache-busting request)"
+          for i in 1 2 3; do
+            for url in "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard" "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?_=$(date +%s%N)"; do
+              h=$(curl -sS -D - -o /tmp/sb.json --max-time 20 "$url" | tr -d '\r' | grep -iE '^(cache-control|age|x-cache|last-modified):' | tr '\n' ' ')
+              clock=$(jq -r '[.events[] | select(.status.type.state == "in")][0] | "\(.shortName) \(.status.displayClock) Q\(.status.period)"' /tmp/sb.json)
+              echo "$(date +%T) $( [[ $url == *"_="* ]] && echo busted || echo normal ) | $clock | $h"
+            done
+            sleep 4
+          done
