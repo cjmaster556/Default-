@@ -522,6 +522,18 @@ main {
   white-space: nowrap;
 }
 
+.dh-clock {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--live);
+}
+
+.dh-clock.stopped {
+  color: var(--muted);
+}
+
 .dh-status {
   font-size: 0.8rem;
   color: var(--muted);

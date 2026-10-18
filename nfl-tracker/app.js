@@ -32,6 +32,8 @@
     filter: loadFilter(),
     favorites: loadFavorites(),
     lastScores: new Map(),
+    clocks: new Map(), // event id -> { seconds, period, running, syncedAt }
+    clockTimer: null,
     openGameId: null,
     timer: null,
     lastUpdated: null,
@@ -106,6 +108,7 @@
     state.seasonType = data.season?.type ?? state.seasonType;
     state.week = data.week?.number ?? state.week;
     state.events = data.events || [];
+    syncClocks();
 
     const calendar = data.leagues?.[0]?.calendar;
     if (Array.isArray(calendar) && calendar.length) {
@@ -385,6 +388,59 @@
       </div>`;
   }
 
+  // ---------- game clock ----------
+
+  // The feed only gives a snapshot of the clock, so between refreshes we run it
+  // down locally. A clock counts as running when it moved since the last
+  // refresh in the same quarter; otherwise (timeout, incompletion, review) it
+  // stays put until the feed shows it moving again.
+  function syncClocks() {
+    const now = Date.now();
+    const seen = new Set();
+    for (const ev of state.events) {
+      if (gameState(ev) !== "in") continue;
+      const m = /^(\d{1,2}):(\d{2})$/.exec(ev.status?.displayClock || "");
+      if (!m) continue;
+      const seconds = Number(m[1]) * 60 + Number(m[2]);
+      const period = ev.status?.period;
+      const prev = state.clocks.get(ev.id);
+      const running = !!prev && prev.period === period && seconds > 0 && seconds < prev.seconds;
+      state.clocks.set(ev.id, { seconds, period, running, syncedAt: now });
+      seen.add(ev.id);
+    }
+    for (const id of state.clocks.keys()) if (!seen.has(id)) state.clocks.delete(id);
+  }
+
+  function clockSeconds(id) {
+    const c = state.clocks.get(id);
+    if (!c) return null;
+    if (!c.running) return c.seconds;
+    // Don't run past the next expected refresh; if the feed stalls, the clock stops too.
+    const elapsed = Math.min((Date.now() - c.syncedAt) / 1000, REFRESH_LIVE / 1000 + 5);
+    return Math.max(0, Math.ceil(c.seconds - elapsed));
+  }
+
+  const formatClock = (secs) => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+
+  function tickClock() {
+    const el = detailEl.querySelector(".dh-clock");
+    if (!el || !state.openGameId) return;
+    const secs = clockSeconds(state.openGameId);
+    if (secs == null) return;
+    el.textContent = formatClock(secs);
+    el.classList.toggle("stopped", !state.clocks.get(state.openGameId)?.running);
+  }
+
+  function startClock() {
+    clearInterval(state.clockTimer);
+    state.clockTimer = setInterval(tickClock, 250);
+  }
+
+  function stopClock() {
+    clearInterval(state.clockTimer);
+    state.clockTimer = null;
+  }
+
   // ---------- rendering: game detail ----------
 
   async function openGame(id) {
@@ -392,6 +448,7 @@
     const ev = state.events.find((e) => e.id === id);
     detailEl.innerHTML = ev ? detailHeader(ev) + '<p class="loading">Loading game details…</p>' : '<p class="loading">Loading…</p>';
     if (!dialog.open) dialog.showModal();
+    startClock();
     refreshDetail();
   }
 
@@ -415,7 +472,15 @@
     const comp = ev.competitions?.[0] || {};
     const { away, home } = sides(comp);
     const st = gameState(ev);
-    const status = st === "pre" ? kickoffText(ev.date) : ev.status?.type?.detail || "";
+    let status = st === "pre" ? kickoffText(ev.date) : ev.status?.type?.detail || "";
+    // Split "7:42 - 3rd Quarter" so the clock can run on its own line.
+    let clock = "";
+    const secs = st === "in" ? clockSeconds(ev.id) : null;
+    const display = ev.status?.displayClock || "";
+    if (secs != null && display && status.startsWith(display)) {
+      clock = `<span class="dh-clock${state.clocks.get(ev.id)?.running ? "" : " stopped"}">${formatClock(secs)}</span>`;
+      status = status.slice(display.length).replace(/^\s*-\s*/, "");
+    }
     const side = (c) => `
       <div class="dh-team" style="--team:${teamColor(c?.team)}">
         ${logo(c?.team, "lg")}
@@ -427,6 +492,7 @@
         ${side(away)}
         <div class="dh-score">
           <span class="dh-nums">${st === "pre" ? "vs" : `${esc(away?.score)} – ${esc(home?.score)}`}</span>
+          ${clock}
           <span class="dh-status${st === "in" ? " live" : ""}">${esc(status)}</span>
         </div>
         ${side(home)}
@@ -667,6 +733,7 @@
   });
   dialog.addEventListener("close", () => {
     state.openGameId = null;
+    stopClock();
   });
 
   document.addEventListener("visibilitychange", () => {
