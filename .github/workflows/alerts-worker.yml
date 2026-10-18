@@ -110,3 +110,16 @@ jobs:
             done
             sleep 4
           done
+          echo "== clock research: ESPN play wallclock vs now (live NFL games)"
+          curl -sS --max-time 20 "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard" | jq -r '.events[] | select(.status.type.state == "in") | .id' | head -3 | while read -r id; do
+            curl -sS --max-time 20 "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=$id" > /tmp/s.json
+            echo "now $(date -u +%FT%TZ) | header clock: $(jq -c '.header.competitions[0].status | {displayClock, clock, period, keys: (.|keys)}' /tmp/s.json)"
+            jq -c '[.drives.current.plays // [] | .[-3:][] | {text: .text[0:60], clock: .clock.displayValue, wallclock, modified, keys: (.|keys)}]' /tmp/s.json | cut -c1-1500
+            jq -c '[.plays // [] | .[-2:][] | {text: .text[0:60], clock: .clock.displayValue, wallclock}]' /tmp/s.json | cut -c1-600
+          done
+          echo "== clock research: NHL api-web"
+          curl -sS -D /tmp/nhl.h --max-time 20 "https://api-web.nhle.com/v1/score/now" | jq -c '[.games[]? | {away: .awayTeam.abbrev, home: .homeTeam.abbrev, state: .gameState, clock, period: .periodDescriptor}] | .[0:4]' | cut -c1-1500
+          echo "NHL CORS/cache: $(grep -iE '^(access-control-allow-origin|cache-control|age):' /tmp/nhl.h | tr -d '\r' | tr '\n' ' ')"
+          echo "== clock research: NBA cdn"
+          curl -sS -D /tmp/nba.h --max-time 20 "https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json" | jq -c '{date: .scoreboard.gameDate, n: (.scoreboard.games | length), first: (.scoreboard.games[0] // {} | {gameStatusText, period, gameClock, keys: (.|keys)})}' | cut -c1-900
+          echo "NBA CORS/cache: $(grep -iE '^(access-control-allow-origin|cache-control|age):' /tmp/nba.h | tr -d '\r' | tr '\n' ' ')"
