@@ -283,6 +283,23 @@
   const athletes = (rows) => rows.map(([name, pos, ...stats]) => ({ athlete: { shortName: name, position: { abbreviation: pos } }, stats: stats.map(String) }));
   const cat = (name, text, labels, rows) => ({ name, text, labels, athletes: athletes(rows) });
 
+  // Plays through the 3rd quarter, each with an id the win probability points at.
+  function demoPlays() {
+    return Array.from({ length: 120 }, (_, i) => ({ id: `p${i}`, period: { number: 1 + Math.floor(i / 40) } }));
+  }
+
+  function demoWinProb() {
+    // Home (BUF) chances drifting with the scoring: KC early lead, BUF ties it, KC kicks ahead.
+    const marks = [[0, 0.58], [12, 0.42], [30, 0.5], [45, 0.62], [62, 0.38], [78, 0.3], [88, 0.52], [104, 0.41], [119, billsTD() ? 0.66 : 0.44]];
+    return Array.from({ length: 120 }, (_, i) => {
+      const k = marks.findIndex(([j]) => j >= i);
+      const [j1, p1] = marks[Math.max(0, k - 1)];
+      const [j2, p2] = marks[k];
+      const p = j2 === j1 ? p2 : p1 + ((p2 - p1) * (i - j1)) / (j2 - j1);
+      return { playId: `p${i}`, homeWinPercentage: +(p + Math.sin(i * 1.7) * 0.02).toFixed(4), tiePercentage: 0 };
+    });
+  }
+
   function summary(key, id) {
     if (key === "nfl" && id === "401") {
       const [KC, BUF] = [t("nfl", "KC"), t("nfl", "BUF")];
@@ -306,12 +323,13 @@
             { team: BUF, displayResult: "Touchdown", description: "6 plays, 75 yards, 2:40" },
             { team: KC, displayResult: "Field Goal", description: "7 plays, 49 yards, 2:22" },
           ],
-          current: { id: "d10", team: BUF, description: "6 plays, 57 yards, 2:31" },
+          current: { id: "d10", team: BUF, description: "6 plays, 57 yards, 2:31", plays: demoPlays() },
         },
         videos: [
           { id: 1, headline: "Josh Allen finds Dalton Kincaid for an 18-yard touchdown", duration: 24, thumbnail: "", lastModified: new Date(start - 6 * 60000).toISOString(), links: { source: { href: "https://espnmedia-cdn.akamaized.net/demo/clip1.mp4" }, web: { href: "https://www.espn.com/video/clip/_/id/1" } } },
           { id: 2, headline: "Patrick Mahomes hits Travis Kelce for the score", duration: 18, thumbnail: "", lastModified: new Date(start - 40 * 60000).toISOString(), links: { source: { href: "https://espnmedia-cdn.akamaized.net/demo/clip2.mp4" }, web: { href: "https://www.espn.com/video/clip/_/id/2" } } },
         ],
+        winprobability: demoWinProb(),
         pickcenter: [
           {
             provider: { name: "DraftKings" },

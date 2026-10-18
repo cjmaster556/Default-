@@ -1621,7 +1621,7 @@
     const st = gameState(ev);
     const loading = summary ? "" : '<p class="loading">Loading game details…</p>';
     const box = boxScoreCards(summary, ev, league);
-    const stats = [oddsCard(ev, summary), teamStatsCard(summary, league), box || leadersCard(summary, ev), infoCard(ev)].join("");
+    const stats = [winProbCard(ev, summary), oddsCard(ev, summary), teamStatsCard(summary, league), box || leadersCard(summary, ev), infoCard(ev)].join("");
     let plays = "";
     if (summary) {
       if (league.sport === "football" || league.sport === "hockey") plays += scoringCard(summary, league);
@@ -2027,6 +2027,81 @@
     ];
     if (!rows.some((r) => r.spread || r.total.line || r.ml)) return null;
     return { provider: o.provider?.name, rows };
+  }
+
+  // ESPN's win probability after each play, as a line that leans toward the
+  // team favored: above the middle for the home team, below for the away team.
+  function winProbCard(ev, summary) {
+    const wp = summary?.winprobability;
+    if (!Array.isArray(wp) || wp.length < 2) return "";
+    const league = byKey[ev._league];
+    const { away, home } = sides(ev.competitions?.[0]);
+    const periodOf = new Map();
+    for (const d of [...(summary.drives?.previous || []), summary.drives?.current]) for (const p of d?.plays || []) periodOf.set(String(p.id), p.period?.number);
+    for (const p of summary.plays || []) periodOf.set(String(p.id), p.period?.number);
+    const pts = wp
+      .map((w) => ({ p: Number(w.homeWinPercentage), period: periodOf.get(String(w.playId)) }))
+      .filter((d) => Number.isFinite(d.p))
+      .map((d) => ({ ...d, p: Math.max(0, Math.min(1, d.p)) }));
+    if (pts.length < 2) return "";
+
+    const W = 300;
+    const H = 120;
+    const x = (i) => ((i / (pts.length - 1)) * W).toFixed(1);
+    const y = (p) => ((1 - p) * H).toFixed(1);
+    const line = pts.map((d, i) => `${i ? "L" : "M"}${x(i)} ${y(d.p)}`).join(" ");
+    const area = `${line} L${W} ${H / 2} L0 ${H / 2} Z`;
+
+    // Where each period starts, for divider lines and labels.
+    const starts = [];
+    let last = null;
+    pts.forEach((d, i) => {
+      if (d.period && d.period !== last) {
+        starts.push({ i, period: d.period });
+        last = d.period;
+      }
+    });
+    const regulation = { football: 4, basketball: 4, hockey: 3 }[league.sport];
+    const periodName = (n) => (n > regulation ? (n === regulation + 1 ? "OT" : `${n - regulation}OT`) : league.sport === "hockey" ? `P${n}` : `Q${n}`);
+    const labels =
+      regulation && starts.length <= 8
+        ? starts
+            .map((s, k) => {
+              const end = k + 1 < starts.length ? starts[k + 1].i : pts.length - 1;
+              return `<span style="left:${(((s.i + end) / 2 / (pts.length - 1)) * 100).toFixed(1)}%">${periodName(s.period)}</span>`;
+            })
+            .join("")
+        : "";
+    const dividers = starts
+      .slice(1)
+      .map((s) => `<line x1="${x(s.i)}" x2="${x(s.i)}" y1="0" y2="${H}" class="wp-div" />`)
+      .join("");
+
+    const now = pts[pts.length - 1].p;
+    const leader = now >= 0.5 ? home : away;
+    const pct = Math.round((now >= 0.5 ? now : 1 - now) * 100);
+    const abbr = (c) => esc(c?.team?.abbreviation || "");
+    const id = `wp${String(ev.id).replace(/\W/g, "")}`;
+    return gcard(
+      "Win Probability",
+      `<div class="wp-now">${logo(leader?.team, "sm")}<b>${pct}%</b><span>${abbr(leader)}</span></div>
+      <div class="wp-chart" role="img" aria-label="Win probability: ${abbr(leader)} ${pct}%">
+        <span class="wp-team top">${abbr(home)}</span>
+        <span class="wp-team bottom">${abbr(away)}</span>
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <clipPath id="${id}t"><rect x="0" y="0" width="${W}" height="${H / 2}" /></clipPath>
+            <clipPath id="${id}b"><rect x="0" y="${H / 2}" width="${W}" height="${H / 2}" /></clipPath>
+          </defs>
+          <path d="${area}" fill="${vividColor(home?.team)}" clip-path="url(#${id}t)" class="wp-area" />
+          <path d="${area}" fill="${vividColor(away?.team)}" clip-path="url(#${id}b)" class="wp-area" />
+          <line x1="0" x2="${W}" y1="${H / 2}" y2="${H / 2}" class="wp-mid" />
+          ${dividers}
+          <path d="${line}" class="wp-line" />
+        </svg>
+      </div>
+      ${labels ? `<div class="wp-periods">${labels}</div>` : ""}`
+    );
   }
 
   function oddsCard(ev, summary) {
