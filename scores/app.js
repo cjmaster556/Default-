@@ -1430,16 +1430,17 @@
 
   // The app that carries a game, from the channel names ESPN lists. Streaming
   // services come first so "ESPN+" isn't mistaken for the ESPN channel.
-  // `android` is the app's package name: on Android the button opens that app
-  // directly (some, like ESPN, don't open from their web address), falling
-  // back to the website when it isn't installed.
+  // `android` is the app's package name. On Android the button asks that app
+  // to open a link it handles (Chrome won't launch an app any other way from a
+  // web page): its web address, or for ESPN, its own sportscenter:// links.
+  // Without the app installed, the website opens instead.
   const WATCH_SERVICES = {
     yttv: { label: "YouTube TV", url: "https://tv.youtube.com/" },
     prime: { label: "Prime Video", url: "https://www.primevideo.com/", android: "com.amazon.avod.thirdpartyclient" },
     peacock: { label: "Peacock", url: "https://www.peacocktv.com/", android: "com.peacocktv.peacockandroid" },
     netflix: { label: "Netflix", url: "https://www.netflix.com/", android: "com.netflix.mediaclient" },
     appletv: { label: "Apple TV", url: "https://tv.apple.com/" },
-    espnapp: { label: "ESPN", url: "https://www.espn.com/watch/", android: "com.espn.score_center" },
+    espnapp: { label: "ESPN", url: "https://www.espn.com/watch/", android: "com.espn.score_center", appLink: "sportscenter://x-callback-url/showWatch" },
     max: { label: "Max", url: "https://www.max.com/", android: "com.wbd.stream" },
     youtube: { label: "YouTube", url: "https://www.youtube.com/", android: "com.google.android.youtube" },
   };
@@ -1448,7 +1449,10 @@
 
   function watchHref(svc) {
     if (!isAndroid || !svc.android) return svc.url;
-    return `intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${svc.android};S.browser_fallback_url=${encodeURIComponent(svc.url)};end`;
+    const link = new URL(svc.appLink || svc.url);
+    const scheme = link.protocol.replace(":", "");
+    const rest = svc.appLink ? svc.appLink.slice(scheme.length + 3) : `${link.host}${link.pathname}`;
+    return `intent://${rest}#Intent;scheme=${scheme};package=${svc.android};S.browser_fallback_url=${encodeURIComponent(svc.url)};end`;
   }
   const WATCH_RULES = [
     [/prime/, "prime"],
