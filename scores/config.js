@@ -2,5 +2,5 @@
 // (for example "https://scoreline-alerts.your-name.workers.dev").
 // Leave it empty and alerts only come while the app is open.
 window.SCORELINE_CONFIG = {
-  alertsServer: "",
+  alertsServer: "https://scoreline-alerts.cjmaster556.workers.dev",
 };
