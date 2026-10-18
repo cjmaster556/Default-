@@ -81,6 +81,7 @@ button {
 }
 
 h1 {
+  min-width: 0;
   margin: 0;
   font-size: 2rem;
   font-weight: 800;
@@ -123,6 +124,51 @@ h1 {
   background: var(--card-2);
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+.bell-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--card-2);
+}
+
+.bell-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.8;
+}
+
+.bell-btn.on {
+  background: var(--accent);
+}
+
+.bell-btn.on svg {
+  fill: #fff;
+  stroke: #fff;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 24px);
+  z-index: 20;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 12px 18px;
+  border-radius: 14px;
+  background: var(--card-2);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  font-size: 0.9rem;
+  text-align: center;
+  transform: translateX(-50%);
 }
 
 #install-btn {

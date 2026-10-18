@@ -15,6 +15,7 @@
   const shortName = (l) => l.short || l.name;
 
   const FAV_KEY = "scoreline.favorites";
+  const ALERTS_KEY = "scoreline.alerts";
 
   // Refresh cadence: fast while games are live, slower near start time, lazy otherwise.
   const REFRESH_LIVE = 10 * 1000;
@@ -40,6 +41,8 @@
   const searchEl = $("team-search");
   const pickerNavEl = $("picker-leagues");
   const installBtn = $("install-btn");
+  const alertsBtn = $("alerts-btn");
+  const toastEl = $("toast");
 
   const state = {
     view: "home",
@@ -52,6 +55,8 @@
     lastScores: new Map(),
     clocks: new Map(),
     openGame: null, // { key, event, summary }
+    alerts: loadAlerts(),
+    alertSeen: new Map(), // event key -> { a, h, st } as of the last check
     seq: 0,
     timer: null,
     clockTimer: null,
@@ -73,6 +78,22 @@
       localStorage.setItem(FAV_KEY, JSON.stringify([...state.favorites.values()]));
     } catch {
       /* storage unavailable; follows last for this visit only */
+    }
+  }
+
+  function loadAlerts() {
+    try {
+      return localStorage.getItem(ALERTS_KEY) === "on";
+    } catch {
+      return false;
+    }
+  }
+
+  function saveAlerts() {
+    try {
+      localStorage.setItem(ALERTS_KEY, state.alerts ? "on" : "off");
+    } catch {
+      /* ignore */
     }
   }
 
@@ -142,28 +163,65 @@
     return fetchJSON(`${API}/${byKey[key].path}/summary?event=${encodeURIComponent(id)}`);
   }
 
+  const teamInfo = (key, team) => ({
+    key: `${key}:${team.id}`,
+    league: key,
+    id: String(team.id),
+    abbr: team.abbreviation,
+    name: team.displayName,
+    short: team.shortDisplayName || team.name || team.displayName,
+    logo: team.logos?.[0]?.href || team.logo || "",
+    color: team.color || "",
+  });
+
   async function fetchTeams(key) {
     const league = byKey[key];
-    let data;
-    if (demoMode) data = window.SCORES_DEMO.teams(key);
-    else {
-      const params = new URLSearchParams(league.params || {});
-      params.set("limit", "1000");
-      data = await fetchJSON(`${API}/${league.path}/teams?${params}`);
+    let list = [];
+    if (demoMode) {
+      list = (window.SCORES_DEMO.teams(key).sports?.[0]?.leagues?.[0]?.teams || []).map(({ team }) => teamInfo(key, team));
+    } else {
+      try {
+        const params = new URLSearchParams(league.params || {});
+        params.set("limit", "1000");
+        const data = await fetchJSON(`${API}/${league.path}/teams?${params}`);
+        list = (data.sports?.[0]?.leagues?.[0]?.teams || []).map(({ team }) => teamInfo(key, team));
+      } catch {
+        /* some browsers can't reach the teams list; build it from scoreboards instead */
+      }
+      if (!list.length) list = await teamsFromScoreboards(key);
     }
-    const list = data.sports?.[0]?.leagues?.[0]?.teams || [];
-    return list
-      .map(({ team }) => ({
-        key: `${key}:${team.id}`,
-        league: key,
-        id: String(team.id),
-        abbr: team.abbreviation,
-        name: team.displayName,
-        short: team.shortDisplayName || team.name || team.displayName,
-        logo: team.logos?.[0]?.href || team.logo || "",
-        color: team.color || "",
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    if (!list.length) throw new Error("no teams found");
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // Collect every team that appears across a spread of weeks or game days.
+  async function teamsFromScoreboards(key) {
+    const league = byKey[key];
+    const first = await fetchScoreboard(key, null);
+    const cursors = [];
+    const calendar = first.leagues?.[0]?.calendar || [];
+    if (league.mode === "week") {
+      const regular = calendar.find((c) => c.value === "2")?.entries?.map((e) => Number(e.value)) || [];
+      const cur = first.season?.type === 2 ? first.week?.number : null;
+      const picks = cur != null ? [cur + 1, cur - 1, cur + 2, cur - 2] : regular.slice(-3);
+      for (const w of picks.filter((w) => regular.includes(w)).slice(0, 3)) {
+        cursors.push({ season: first.season?.year, seasonType: 2, week: w });
+      }
+    } else {
+      const days = calendar.filter((d) => typeof d === "string").map((d) => d.slice(0, 10).replace(/-/g, ""));
+      const n = Math.min(6, days.length);
+      for (let i = 0; i < n; i++) cursors.push({ date: days[Math.round((i * (days.length - 1)) / Math.max(1, n - 1))] });
+    }
+    const boards = [first, ...(await Promise.allSettled(cursors.map((c) => fetchScoreboard(key, c)))).filter((r) => r.status === "fulfilled").map((r) => r.value)];
+    const teams = new Map();
+    for (const b of boards) {
+      for (const ev of b.events || []) {
+        for (const c of ev.competitions?.[0]?.competitors || []) {
+          if (c.team?.id && !teams.has(c.team.id)) teams.set(c.team.id, teamInfo(key, c.team));
+        }
+      }
+    }
+    return [...teams.values()];
   }
 
   async function fetchTeamNext(fav) {
@@ -309,6 +367,18 @@
       applyLeague(view, result);
     }
 
+    // Alerts need your teams' games even while you're looking at another league.
+    if (state.alerts && view !== "home" && state.favorites.size) {
+      try {
+        const res = await fetchHome();
+        if (seq === state.seq) applyHome(res);
+      } catch {
+        /* try again next tick */
+      }
+      if (seq !== state.seq) return;
+    }
+    checkAlerts();
+
     syncOpenGame();
     syncClocks();
     render();
@@ -318,12 +388,12 @@
 
   function schedule() {
     clearTimeout(state.timer);
-    if (document.hidden) return;
+    if (document.hidden && !alertsWatching()) return;
     state.timer = setTimeout(refresh, nextDelay());
   }
 
   function nextDelay() {
-    const events = currentEvents();
+    const events = state.alerts ? [...currentEvents(), ...state.home.events] : currentEvents();
     if (currentError()) return REFRESH_SOON;
     if (state.openGame && gameState(state.openGame.event) === "in") return REFRESH_LIVE;
     const now = Date.now();
@@ -385,6 +455,108 @@
       const t = new Date(a.date) - new Date(b.date);
       return gameState(a) === "post" ? -t : t;
     });
+  }
+
+  // ---------- score alerts ----------
+
+  const alertsSupported = () => "Notification" in window && "serviceWorker" in navigator;
+
+  // Keep checking in the background while one of your teams is playing or about to.
+  function alertsWatching() {
+    if (!state.alerts || !state.favorites.size) return false;
+    const soon = Date.now() + 30 * 60 * 1000;
+    return state.home.events.some((ev) => gameState(ev) === "in" || (gameState(ev) === "pre" && new Date(ev.date).getTime() < soon));
+  }
+
+  function checkAlerts() {
+    const notifyOK = state.alerts && alertsSupported() && Notification.permission === "granted";
+    for (const ev of state.home.events) {
+      if (!isFavGame(ev)) continue;
+      const comp = ev.competitions?.[0] || {};
+      const { away, home } = sides(comp);
+      if (!away || !home) continue;
+      const st = gameState(ev);
+      const now = { a: Number(away.score) || 0, h: Number(home.score) || 0, st };
+      const prev = state.alertSeen.get(ev._key);
+      state.alertSeen.set(ev._key, now);
+      // The first look at a game only sets the baseline.
+      if (!prev || !notifyOK) continue;
+
+      const line = `${away.team.abbreviation} ${now.a} – ${now.h} ${home.team.abbreviation}`;
+      const status = ev.status?.type?.shortDetail || "";
+      const fav = (c) => state.favorites.has(`${ev._league}:${c.team?.id}`);
+      const name = (c) => c.team?.shortDisplayName || c.team?.abbreviation;
+
+      if (prev.st === "pre" && st === "in") {
+        notify(ev, `${name(away)} at ${name(home)} has started`, status);
+      }
+      for (const [c, before, after] of [
+        [away, prev.a, now.a],
+        [home, prev.h, now.h],
+      ]) {
+        if (fav(c) && after > before) {
+          const last = comp.situation?.lastPlay?.text;
+          notify(ev, `${name(c)} score!`, [`${line} · ${status}`, last].filter(Boolean).join("\n"));
+        }
+      }
+      if (prev.st === "in" && st === "post") {
+        const winner = comp.competitors?.find((c) => c.winner);
+        notify(ev, winner ? `Final: ${name(winner)} win` : "Final", line);
+      }
+    }
+  }
+
+  async function notify(ev, title, body) {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, {
+        body,
+        tag: ev._key,
+        renotify: true,
+        icon: "icons/icon-192.png",
+        badge: "icons/icon-192.png",
+        data: { url: `${location.origin}${location.pathname}${location.search}#home` },
+      });
+    } catch {
+      /* notification couldn't be shown; nothing else to do */
+    }
+  }
+
+  async function toggleAlerts() {
+    if (state.alerts) {
+      state.alerts = false;
+      saveAlerts();
+      renderAlertsBtn();
+      toast("Score alerts off");
+      return;
+    }
+    let perm = Notification.permission;
+    if (perm === "default") perm = await Notification.requestPermission();
+    if (perm !== "granted") {
+      toast("Notifications are blocked for this site. Allow them in your browser's site settings, then try again.");
+      return;
+    }
+    state.alerts = true;
+    saveAlerts();
+    renderAlertsBtn();
+    toast(state.favorites.size ? "Score alerts on for your teams" : "Score alerts on. Follow some teams to get them.");
+    refresh();
+  }
+
+  function renderAlertsBtn() {
+    alertsBtn.hidden = !alertsSupported();
+    alertsBtn.classList.toggle("on", state.alerts);
+    alertsBtn.setAttribute("aria-pressed", state.alerts);
+    alertsBtn.setAttribute("aria-label", state.alerts ? "Score alerts on" : "Score alerts off");
+    alertsBtn.title = state.alerts ? "Score alerts on" : "Turn on score alerts";
+  }
+
+  let toastTimer = null;
+  function toast(text) {
+    toastEl.textContent = text;
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (toastEl.hidden = true), 4000);
   }
 
   // ---------- game clock ----------
@@ -1261,9 +1433,11 @@
   window.addEventListener("hashchange", () => setView(location.hash.slice(1) || "home"));
 
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) clearTimeout(state.timer);
-    else refresh();
+    if (!document.hidden) refresh();
+    else if (!alertsWatching()) clearTimeout(state.timer);
   });
+
+  alertsBtn.addEventListener("click", toggleAlerts);
 
   // ---------- install ----------
 
@@ -1293,6 +1467,7 @@
   const initial = location.hash.slice(1);
   state.view = byKey[initial] ? initial : "home";
   if (!initial && !state.favorites.size) state.view = "home";
+  renderAlertsBtn();
   render();
   refresh();
 })();

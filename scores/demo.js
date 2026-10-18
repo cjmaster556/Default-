@@ -104,6 +104,9 @@
     return `${Math.floor(left / 60)}:${pad(left % 60)}`;
   }
 
+  // The Bills score a touchdown 25 seconds after the page opens, to show score alerts.
+  const billsTD = () => Date.now() - start > 25000;
+
   const ord = (n) => ["", "1st", "2nd", "3rd", "4th"][n] || `${n}th`;
   const live = (clock, period, word = "Quarter") => ({
     displayClock: clock,
@@ -130,7 +133,7 @@
       week: { number: 7 },
       leagues: [{ calendar: weekCalendar(18) }],
       events: [
-        event("401", side("away", t("nfl", "KC"), 20, "5-1", [7, 10, 3]), side("home", t("nfl", "BUF"), 17, "4-2", [3, 7, 7]), live(running(462), 3), {
+        event("401", side("away", t("nfl", "KC"), 20, "5-1", [7, 10, 3]), side("home", t("nfl", "BUF"), billsTD() ? 24 : 17, "4-2", [3, 7, billsTD() ? 14 : 7]), live(running(462), 3), {
           tv: "CBS",
           venue: "Highmark Stadium",
           address: { city: "Orchard Park", state: "NY" },
@@ -143,7 +146,11 @@
             isRedZone: true,
             homeTimeouts: 2,
             awayTimeouts: 3,
-            lastPlay: { text: "J.Allen pass short right to K.Coleman for 4 yards (T.McDuffie)." },
+            lastPlay: {
+              text: billsTD()
+                ? "J.Allen pass short right to D.Kincaid for 18 yards, TOUCHDOWN. T.Bass extra point is GOOD."
+                : "J.Allen pass short right to K.Coleman for 4 yards (T.McDuffie).",
+            },
           },
         }),
         event("402", side("away", t("nfl", "DAL"), 10, "2-4", [0, 10]), side("home", t("nfl", "PHI"), 14, "5-1", [7, 7]), {

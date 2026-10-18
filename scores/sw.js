@@ -1,6 +1,6 @@
 // Network-first for the app's own files so updates show up right away, with a
 // cached copy as the fallback when offline. Score requests go straight to ESPN.
-const CACHE = "scoreline-v1";
+const CACHE = "scoreline-v2";
 const SHELL = ["./", "index.html", "style.css", "app.js", "demo.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -29,5 +29,17 @@ self.addEventListener("fetch", (e) => {
         return res;
       })
       .catch(() => caches.match(req, { ignoreSearch: true }).then((r) => r || caches.match("index.html")))
+  );
+});
+
+// Tapping a score alert brings the app forward (or opens it).
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = e.notification.data?.url || self.registration.scope;
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      const open = list.find((c) => c.url.startsWith(self.registration.scope));
+      return open ? open.focus() : self.clients.openWindow(url);
+    })
   );
 });
