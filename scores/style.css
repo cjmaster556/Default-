@@ -1134,6 +1134,14 @@ table {
   color: var(--soft);
 }
 
+.clock-dbg {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--soft);
+}
+
 .gd-note {
   font-size: 0.75rem;
   color: var(--soft);

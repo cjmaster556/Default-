@@ -598,10 +598,19 @@
   // The feed only gives snapshots of the clock, and ESPN doesn't refresh it on
   // every request, so an unchanged clock doesn't mean a stopped one. We run the
   // clock locally from the last change and call it stopped only when the feed
-  // says so: another part of the game moved on (a new play, a score) while the
-  // clock didn't, or the clock sat still for longer than ESPN's update lag.
-  const STALE_CLOCK = 15 * 1000; // unchanged this long while running: clock has stopped
-  const MAX_RUN = 25; // never run more than this many seconds past the last change
+  // says so: a whistle-type play came in (incomplete pass, foul, icing), another
+  // part of the game moved on while the clock didn't, or the clock sat still for
+  // well over this game's normal gap between ESPN updates.
+  const DEFAULT_FEED_GAP = 10; // seconds between clock changes until we've measured this game's
+  const debugClock = new URLSearchParams(location.search).has("debug");
+
+  // Plays after which the clock is stopped until the feed shows it moving again.
+  const STOP_PLAYS = {
+    football:
+      /incomplete|time ?out|out of bounds|touchdown|field goal|extra point|two-point|penalty|kicks? off|kickoff|punts?\b|two-minute warning|end of (the )?(quarter|half|game)|injur|challenge|review|intercept|fumble|spiked?|safety|no play/i,
+    basketball: /foul|free throw|time ?out|violation|jump ball|end of|review|challenge|substitution|out of bounds/i,
+    hockey: /stoppage|icing|offside|penalty|time ?out|end of|goal scored|scores?\b|puck (in|over)|hand pass|review|challenge/i,
+  };
 
   function parseClock(text) {
     let m = /^(\d{1,2}):(\d{2})(?:\.(\d))?$/.exec(text || "");
@@ -618,6 +627,17 @@
     const scores = (comp.competitors || []).map((c) => c.score).join("-");
     return [scores, sit.lastPlay?.text || sit.lastPlay?.id || "", sit.downDistanceText || "", sit.balls, sit.strikes, sit.outs].join("|");
   }
+
+  const median = (xs) => {
+    if (!xs.length) return null;
+    const s = xs.slice().sort((a, b) => a - b);
+    return s[Math.floor(s.length / 2)];
+  };
+
+  // How long this game's clock normally goes between changes in the feed.
+  const feedGap = (c) => median(c?.gaps || []) ?? DEFAULT_FEED_GAP;
+  // Unchanged this long while running means the clock has really stopped.
+  const staleAfter = (c) => Math.min(45, Math.max(12, feedGap(c) * 2.2));
 
   function syncClocks() {
     const now = Date.now();
@@ -636,28 +656,49 @@
       const period = ev.status?.period;
       const sig = playSignature(ev);
       const prev = state.clocks.get(ev._key);
+      const sport = byKey[ev._league]?.sport;
 
-      if (!prev || prev.period !== period) {
-        state.clocks.set(ev._key, { reported: p.secs, anchor: p.secs, anchorAt: now, changedAt: now, running: false, period, tenths: p.tenths, sig });
+      if (!prev || period > prev.period) {
+        state.clocks.set(ev._key, { reported: p.secs, anchor: p.secs, anchorAt: now, changedAt: now, running: false, period, tenths: p.tenths, sig, gaps: prev?.gaps || [] });
         continue;
       }
 
-      if (p.secs === prev.reported) {
-        const playHappened = sig !== prev.sig;
-        if (prev.running && (playHappened || now - prev.changedAt > STALE_CLOCK)) {
-          state.clocks.set(ev._key, { ...prev, running: false, anchor: p.secs, anchorAt: now, sig });
-        } else if (playHappened) {
-          state.clocks.set(ev._key, { ...prev, sig });
+      // ESPN serves the same game from several places (the scoreboard, the game
+      // summary, different servers), and some lag behind others. A clock only
+      // counts down, so a reading from an earlier period or with more time left
+      // is an older copy: skip it, unless it sticks (officials do add time back).
+      if (period < prev.period || p.secs > prev.reported) {
+        if (!prev.higherSince) state.clocks.set(ev._key, { ...prev, higherSince: now });
+        else if (now - prev.higherSince > 20000 && period === prev.period) {
+          state.clocks.set(ev._key, { ...prev, reported: p.secs, anchor: p.secs, anchorAt: now, changedAt: now, running: false, higherSince: null, sig });
         }
         continue;
       }
 
-      let running = p.secs < prev.reported && p.secs > 0;
-      // If the clock dropped much less than the real time since its last
-      // change, it stopped somewhere in between; wait for the next change.
+      const newPlay = sig !== prev.sig;
+      const whistle = newPlay && STOP_PLAYS[sport]?.test(ev.competitions?.[0]?.situation?.lastPlay?.text || "");
+
+      if (p.secs === prev.reported) {
+        if (prev.running && (whistle || newPlay || now - prev.changedAt > staleAfter(prev) * 1000)) {
+          state.clocks.set(ev._key, { ...prev, running: false, anchor: p.secs, anchorAt: now, sig, higherSince: null });
+        } else if (newPlay || prev.higherSince) {
+          state.clocks.set(ev._key, { ...prev, sig, higherSince: null });
+        }
+        continue;
+      }
+
+      // The clock moved down.
       const elapsed = (now - prev.changedAt) / 1000;
       const drop = prev.reported - p.secs;
-      if (running && prev.running && elapsed - drop > 6 && drop < elapsed * 0.5) running = false;
+      const gaps = prev.gaps.slice(-7);
+      // While it was running, the time between changes is how often ESPN updates this game.
+      if (prev.running && elapsed > 1 && Math.abs(elapsed - drop) < 4) gaps.push(elapsed);
+
+      let running = p.secs > 0 && !whistle;
+      // If the clock dropped much less than the real time since its last
+      // change, it stopped somewhere in between; wait for the next change.
+      const slack = Math.max(6, feedGap(prev) * 0.6);
+      if (running && prev.running && elapsed - drop > slack && drop < elapsed * 0.5) running = false;
       let anchor = p.secs;
       if (running && prev.running) {
         // The feed lags real time, so it often reads a little behind our running
@@ -665,9 +706,9 @@
         const shown = clockSeconds(ev._key);
         if (shown != null && p.secs >= shown && p.secs - shown <= 3) anchor = shown;
       }
-      state.clocks.set(ev._key, { reported: p.secs, anchor, anchorAt: now, changedAt: now, running, period, tenths: p.tenths, sig });
+      state.clocks.set(ev._key, { reported: p.secs, anchor, anchorAt: now, changedAt: now, running, period, tenths: p.tenths, sig, gaps, higherSince: null });
     }
-    const anyRunning = [...state.clocks.values()].some((c) => c.running);
+    const anyRunning = debugClock || [...state.clocks.values()].some((c) => c.running);
     if (anyRunning && !state.clockTimer) state.clockTimer = setInterval(tickClocks, 100);
     if (!anyRunning && state.clockTimer) {
       clearInterval(state.clockTimer);
@@ -679,7 +720,8 @@
     const c = state.clocks.get(key);
     if (!c) return null;
     if (!c.running) return c.anchor;
-    const elapsed = Math.min((Date.now() - c.anchorAt) / 1000, MAX_RUN);
+    // Never run further past the last change than the feed would normally take to update.
+    const elapsed = Math.min((Date.now() - c.anchorAt) / 1000, staleAfter(c) + 3);
     return Math.max(0, c.anchor - elapsed);
   }
 
@@ -699,6 +741,13 @@
       if (el.textContent !== text) el.textContent = text;
       el.classList.toggle("stopped", !c?.running);
     });
+    // With ?debug, show what the clock logic is seeing, to tune it against real games.
+    document.querySelectorAll("[data-clockdbg]").forEach((el) => {
+      const c = state.clocks.get(el.dataset.clockdbg);
+      if (!c) return;
+      const ago = Math.round((Date.now() - c.changedAt) / 1000);
+      el.textContent = `ESPN ${formatClock(c.reported)} · changed ${ago}s ago · updates ~${Math.round(feedGap(c))}s (${c.gaps.length}) · ${c.running ? "running" : "stopped"}`;
+    });
   }
 
   // Status like "7:42 - 3rd" with the clock split out so it can run.
@@ -712,7 +761,8 @@
     if (secs != null && display && detail.startsWith(display)) {
       const rest = detail.slice(display.length).replace(/^\s*-\s*/, "");
       const running = state.clocks.get(ev._key)?.running;
-      return `<span class="clock${running ? "" : " stopped"}" data-clock="${esc(ev._key)}">${formatClock(secs, state.clocks.get(ev._key)?.tenths)}</span> <span>${esc(rest)}</span>`;
+      const dbg = debugClock && long ? `<small class="clock-dbg" data-clockdbg="${esc(ev._key)}"></small>` : "";
+      return `<span class="clock${running ? "" : " stopped"}" data-clock="${esc(ev._key)}">${formatClock(secs, state.clocks.get(ev._key)?.tenths)}</span> <span>${esc(rest)}</span>${dbg}`;
     }
     return esc(detail);
   }
@@ -1029,10 +1079,18 @@
     renderDetail();
   }
 
+  // How far along a game is, from its status: later period, or less time left.
+  function progress(status) {
+    const p = parseClock(status?.displayClock);
+    return (Number(status?.period) || 0) * 100000 - (p ? p.secs : 0);
+  }
+
   function mergeSummaryStatus(ev, summary) {
     const hc = summary?.header?.competitions?.[0];
     if (!hc || gameState(ev) === "post") return;
-    if (hc.status?.type) ev.status = { ...ev.status, ...hc.status };
+    // Only take the summary's status and score when it's at least as current as what we have.
+    if (!hc.status?.type || progress(hc.status) < progress(ev.status)) return;
+    ev.status = { ...ev.status, ...hc.status };
     const comp = ev.competitions?.[0];
     for (const c of hc.competitors || []) {
       const mine = comp?.competitors?.find((x) => String(x.team?.id) === String(c.team?.id ?? c.id));
