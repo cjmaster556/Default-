@@ -431,19 +431,32 @@
     return /^[0-9a-f]{6}$/i.test(team?.color || "") ? `#${team.color}` : "#3a3a3c";
   }
 
-  // The color to paint a team with. Some teams' primary is nearly black (the
-  // Browns' brown, the Raiders' black); use their secondary then, as Apple does.
+  // The color to paint a team with. A few teams' primary is a near-black that
+  // turns to mud on screen (the Browns' brown, the Raiders' and Steelers'
+  // black); use their secondary then. Dark navies and purples (Bears, Ravens)
+  // still read as themselves, so they stay.
   function vividColor(team) {
     const ok = (h) => /^[0-9a-f]{6}$/i.test(h || "");
-    const lightness = (h) => {
+    const hsl = (h) => {
       const n = parseInt(h, 16);
-      const ch = [n >> 16, (n >> 8) & 255, n & 255].map((v) => v / 255);
-      return (Math.max(...ch) + Math.min(...ch)) / 2;
+      const [r, g, b] = [n >> 16, (n >> 8) & 255, n & 255].map((v) => v / 255);
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const l = (max + min) / 2;
+      const d = max - min;
+      const sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+      let hue = 0;
+      if (d) hue = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      return { h: (hue * 60 + 360) % 360, s: sat, l };
+    };
+    const muddy = (h) => {
+      const c = hsl(h);
+      return c.l < 0.14 && (c.s < 0.2 || (c.h >= 10 && c.h <= 60));
     };
     const c = team?.color;
     const alt = team?.alternateColor;
     if (ok(c)) {
-      if (lightness(c) < 0.15 && ok(alt) && lightness(alt) >= 0.15 && lightness(alt) <= 0.8) return `#${alt}`;
+      if (muddy(c) && ok(alt) && hsl(alt).l >= 0.15 && hsl(alt).l <= 0.8) return `#${alt}`;
       return `#${c}`;
     }
     return ok(alt) ? `#${alt}` : "#3a3a3c";
