@@ -83,3 +83,9 @@ jobs:
             echo "== videos $lg"
             get "/videos?league=$lg" | jq -c '{channel, n: (.items | length), first: [.items[0:4][] | {title, published}]}' | cut -c1-900
           done
+          echo "== game videos (ESPN summary)"
+          for lg in football/nfl football/college-football hockey/nhl baseball/mlb basketball/nba; do
+            id=$(curl -sS --max-time 20 "https://site.api.espn.com/apis/site/v2/sports/$lg/scoreboard" | jq -r '[.events[]? | select(.status.type.state != "pre")][0].id // empty')
+            echo "-- $lg event $id"
+            [ -n "$id" ] && curl -sS --max-time 20 "https://site.api.espn.com/apis/site/v2/sports/$lg/summary?event=$id" | jq -c '{n: (.videos | length), first: (.videos[0] | {headline, description, duration, thumbnail, lastModified, keys: keys, links: .links})}' | cut -c1-3000
+          done
