@@ -279,6 +279,10 @@
   const stat = (name, label, displayValue) => ({ name, label, displayValue });
   const leader = (name, displayName, shortName, displayValue) => ({ name, displayName, leaders: [{ athlete: { shortName }, displayValue }] });
 
+  // Box score in ESPN's shape: per team, categories of labels and athlete rows.
+  const athletes = (rows) => rows.map(([name, pos, ...stats]) => ({ athlete: { shortName: name, position: { abbreviation: pos } }, stats: stats.map(String) }));
+  const cat = (name, text, labels, rows) => ({ name, text, labels, athletes: athletes(rows) });
+
   function summary(key, id) {
     if (key === "nfl" && id === "401") {
       const [KC, BUF] = [t("nfl", "KC"), t("nfl", "BUF")];
@@ -346,9 +350,29 @@
           { team: BUF, leaders: [leader("passingYards", "Passing", "J. Allen", "15/22, 188 YDS, 1 TD"), leader("rushingYards", "Rushing", "J. Cook", "12 CAR, 64 YDS, 1 TD"), leader("receivingYards", "Receiving", "K. Shakir", "4 REC, 67 YDS, 1 TD")] },
         ],
         boxscore: {
+          players: [
+            {
+              team: BUF,
+              statistics: [
+                cat("passing", "Passing", ["C/ATT", "YDS", "AVG", "TD", "INT", "SACKS"], [["J. Allen", "QB", "15/22", 188, 8.5, 1, 1, "1-7"]]),
+                cat("rushing", "Rushing", ["CAR", "YDS", "AVG", "TD", "LONG"], [["J. Cook", "RB", 12, 64, 5.3, 1, 19], ["J. Allen", "QB", 4, 31, 7.8, 0, 14]]),
+                cat("receiving", "Receiving", ["REC", "YDS", "AVG", "TD", "LONG", "TGTS"], [["K. Shakir", "WR", 4, 67, 16.8, 1, 31, 5], ["D. Kincaid", "TE", 3, 41, 13.7, 0, 18, 4], ["K. Coleman", "WR", 3, 38, 12.7, 0, 22, 6]]),
+                cat("defensive", "Defense", ["TOT", "SOLO", "SACKS", "TFL", "PD", "QB HTS", "TD"], [["T. Bernard", "LB", 7, 5, "1.0", 1, 0, 2, 0], ["G. Rousseau", "DE", 4, 3, "1.0", 2, 0, 3, 0]]),
+              ],
+            },
+            {
+              team: KC,
+              statistics: [
+                cat("passing", "Passing", ["C/ATT", "YDS", "AVG", "TD", "INT", "SACKS"], [["P. Mahomes", "QB", "17/24", 211, 8.8, 1, 0, "2-12"]]),
+                cat("rushing", "Rushing", ["CAR", "YDS", "AVG", "TD", "LONG"], [["K. Hunt", "RB", 11, 48, 4.4, 1, 12], ["I. Pacheco", "RB", 6, 29, 4.8, 0, 9]]),
+                cat("receiving", "Receiving", ["REC", "YDS", "AVG", "TD", "LONG", "TGTS"], [["T. Kelce", "TE", 6, 72, 12.0, 1, 21, 7], ["X. Worthy", "WR", 4, 61, 15.3, 0, 34, 6]]),
+                cat("kicking", "Kicking", ["FG", "PCT", "LONG", "XP", "PTS"], [["H. Butker", "K", "2/2", "100.0", 51, "2/2", 8]]),
+              ],
+            },
+          ],
           teams: [
-            { team: KC, statistics: [stat("totalOffensivePlays", "Total Plays", "35"), stat("yardsPerPlay", "Yards per Play", "8.6"), stat("thirdDownEff", "3rd down efficiency", "5-9"), stat("totalYards", "Total Yards", "301"), stat("netPassingYards", "Passing", "205"), stat("rushingYards", "Rushing", "96"), stat("firstDowns", "1st Downs", "18"), stat("turnovers", "Turnovers", "0"), stat("possessionTime", "Possession", "21:40")] },
-            { team: BUF, statistics: [stat("totalOffensivePlays", "Total Plays", "29"), stat("yardsPerPlay", "Yards per Play", "9.9"), stat("thirdDownEff", "3rd down efficiency", "4-8"), stat("totalYards", "Total Yards", "287"), stat("netPassingYards", "Passing", "180"), stat("rushingYards", "Rushing", "107"), stat("firstDowns", "1st Downs", "16"), stat("turnovers", "Turnovers", "1"), stat("possessionTime", "Possession", "15:38")] },
+            { team: KC, statistics: [stat("totalOffensivePlays", "Total Plays", "35"), stat("yardsPerPlay", "Yards per Play", "8.6"), stat("thirdDownEff", "3rd down efficiency", "5-9"), stat("totalPenaltiesYards", "Penalties", "3-25"), stat("fumblesLost", "Fumbles Lost", "0"), stat("interceptions", "Interceptions Thrown", "0"), stat("totalYards", "Total Yards", "301"), stat("netPassingYards", "Passing", "205"), stat("rushingYards", "Rushing", "96"), stat("firstDowns", "1st Downs", "18"), stat("turnovers", "Turnovers", "0"), stat("possessionTime", "Possession", "21:40")] },
+            { team: BUF, statistics: [stat("totalOffensivePlays", "Total Plays", "29"), stat("yardsPerPlay", "Yards per Play", "9.9"), stat("thirdDownEff", "3rd down efficiency", "4-8"), stat("totalPenaltiesYards", "Penalties", "5-40"), stat("fumblesLost", "Fumbles Lost", "0"), stat("interceptions", "Interceptions Thrown", "1"), stat("totalYards", "Total Yards", "287"), stat("netPassingYards", "Passing", "180"), stat("rushingYards", "Rushing", "107"), stat("firstDowns", "1st Downs", "16"), stat("turnovers", "Turnovers", "1"), stat("possessionTime", "Possession", "15:38")] },
           ],
         },
       };

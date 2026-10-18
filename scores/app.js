@@ -173,6 +173,7 @@
     short: team.shortDisplayName || team.name || team.displayName,
     logo: team.logos?.[0]?.href || team.logo || "",
     color: team.color || "",
+    alternateColor: team.alternateColor || "",
   });
 
   async function fetchTeams(key) {
@@ -256,6 +257,7 @@
       const fav = c.team && state.favorites.get(`${key}:${c.team.id}`);
       if (!fav) continue;
       c.team.color ||= fav.color;
+      c.team.alternateColor ||= fav.alternateColor;
       c.team.logo ||= fav.logo;
     }
   }
@@ -427,6 +429,24 @@
 
   function teamColor(team) {
     return /^[0-9a-f]{6}$/i.test(team?.color || "") ? `#${team.color}` : "#3a3a3c";
+  }
+
+  // The color to paint a team with. Some teams' primary is nearly black (the
+  // Browns' brown, the Raiders' black); use their secondary then, as Apple does.
+  function vividColor(team) {
+    const ok = (h) => /^[0-9a-f]{6}$/i.test(h || "");
+    const lightness = (h) => {
+      const n = parseInt(h, 16);
+      const ch = [n >> 16, (n >> 8) & 255, n & 255].map((v) => v / 255);
+      return (Math.max(...ch) + Math.min(...ch)) / 2;
+    };
+    const c = team?.color;
+    const alt = team?.alternateColor;
+    if (ok(c)) {
+      if (lightness(c) < 0.15 && ok(alt) && lightness(alt) >= 0.15 && lightness(alt) <= 0.8) return `#${alt}`;
+      return `#${c}`;
+    }
+    return ok(alt) ? `#${alt}` : "#3a3a3c";
   }
 
   function logo(team, size = "md") {
@@ -815,7 +835,7 @@
 
     return `
       <article class="card state-${st}${changed ? " scored" : ""}" data-key="${esc(ev._key)}" tabindex="0"
-        aria-label="${esc(ev.name || ev.shortName)}" style="--away:${teamColor(away?.team)};--home:${teamColor(home?.team)}">
+        aria-label="${esc(ev.name || ev.shortName)}" style="--away:${vividColor(away?.team)};--home:${vividColor(home?.team)}">
         ${label ? `<div class="card-label">${esc(label)}</div>` : ""}
         <div class="matchup">
           ${side(away, comp, league, st, sit)}
@@ -929,12 +949,12 @@
     const first = dir ? Math.max(0, Math.min(100, spot + dir * togo)) : null;
     return `
       <div class="field" aria-hidden="true">
-        <div class="endzone" style="--team:${teamColor(away?.team)}"></div>
+        <div class="endzone" style="--team:${vividColor(away?.team)}"></div>
         <div class="turf">
           ${first != null ? `<div class="first-line" style="left:${first}%"></div>` : ""}
           <div class="ball" style="left:${spot}%"></div>
         </div>
-        <div class="endzone" style="--team:${teamColor(home?.team)}"></div>
+        <div class="endzone" style="--team:${vividColor(home?.team)}"></div>
       </div>`;
   }
 
@@ -1013,8 +1033,8 @@
     if (!og) return;
     const ev = og.event;
     const { away, home } = sides(ev.competitions?.[0]);
-    gameDialog.style.setProperty("--away", teamColor(away?.team));
-    gameDialog.style.setProperty("--home", teamColor(home?.team));
+    gameDialog.style.setProperty("--away", vividColor(away?.team));
+    gameDialog.style.setProperty("--home", vividColor(home?.team));
     $("game-league").textContent = byKey[ev._league].name;
     const keys = gameOrder();
     const i = keys.indexOf(og.key);
@@ -1027,18 +1047,40 @@
     const scroll = detailEl.scrollTop;
     detailEl.innerHTML = `
       ${hero(ev)}
-      <nav class="gd-tabs" role="tablist">
-        ${tabs.map((t) => `<button class="gd-tab${t === tab ? " active" : ""}" role="tab" data-tab="${t.key}" aria-selected="${t === tab}">${t.label}</button>`).join("")}
-      </nav>
+      <div class="gd-sticky">
+        ${miniScore(ev)}
+        <nav class="gd-tabs" role="tablist">
+          ${tabs.map((t) => `<button class="gd-tab${t === tab ? " active" : ""}" role="tab" data-tab="${t.key}" aria-selected="${t === tab}">${t.label}</button>`).join("")}
+        </nav>
+      </div>
       <div class="gd-panel">${tab.html}</div>`;
     detailEl.scrollTop = scroll;
+    updateStuck();
+  }
+
+  // The small scoreboard that stays pinned above the tabs once the big one scrolls away.
+  function miniScore(ev) {
+    const comp = ev.competitions?.[0] || {};
+    const { away, home } = sides(comp);
+    const st = gameState(ev);
+    const sit = comp.situation || {};
+    const ball = (c) => byKey[ev._league].sport === "football" && st === "in" && String(sit.possession) === String(c?.team?.id);
+    const side = (c, flip) => `
+      <span class="gm-side${flip ? " flip" : ""}">${logo(c?.team, "sm")}${ball(c) ? '<i class="gm-ball"></i>' : ""}<b>${st === "pre" ? "" : esc(c?.score)}</b></span>`;
+    return `<div class="gd-mini" aria-hidden="true">${side(away)}<span class="gm-status">${statusHTML(ev)}</span>${side(home, true)}</div>`;
+  }
+
+  function updateStuck() {
+    const hero = detailEl.querySelector(".gd-hero");
+    gameDialog.classList.toggle("stuck", !!hero && detailEl.scrollTop > hero.offsetHeight - 8);
   }
 
   function detailTabs(ev, summary) {
     const league = byKey[ev._league];
     const st = gameState(ev);
     const loading = summary ? "" : '<p class="loading">Loading game details…</p>';
-    const stats = [oddsCard(ev, summary), teamStatsCard(summary, league), leadersCard(summary, ev), infoCard(ev)].join("");
+    const box = boxScoreCards(summary, ev, league);
+    const stats = [oddsCard(ev, summary), teamStatsCard(summary, league), box || leadersCard(summary, ev), infoCard(ev)].join("");
     let plays = "";
     if (summary) {
       if (league.sport === "football" || league.sport === "hockey") plays += scoringCard(summary, league);
@@ -1090,10 +1132,10 @@
 
     let now = "";
     if (st === "in") {
-      if (league.sport === "football" && (sit.downDistanceText || sit.lastPlay?.text)) {
+      if (league.sport === "football" && (sit.downDistanceText || sit.lastPlay?.text || sit.possessionText)) {
         now = `
           ${sit.downDistanceText ? `<p class="situation${sit.isRedZone ? " redzone" : ""}">${esc(sit.downDistanceText)}${sit.isRedZone ? ' <span class="rz">Red Zone</span>' : ""}</p>` : ""}
-          ${miniField(sit, away, home)}
+          ${heroField(sit, away, home)}
           ${sit.lastPlay?.text ? `<p class="last-play">${esc(sit.lastPlay.text)}</p>` : ""}`;
       } else if (league.sport === "baseball") {
         now = baseballSituation(sit, true);
@@ -1115,6 +1157,29 @@
         ${st !== "pre" ? lineScore(league, away, home, st) : ""}
         ${now ? `<div class="gd-now">${now}</div>` : ""}
         ${tvLine ? `<p class="gd-tv">${esc(tvLine)}</p>` : ""}
+      </div>`;
+  }
+
+  // A light, tilted field with yard numbers, like Apple's.
+  function heroField(sit, away, home) {
+    const spot = ballSpot(sit, away, home);
+    if (spot == null) return "";
+    const poss = String(sit.possession);
+    const dir = poss === String(away?.team?.id) ? 1 : poss === String(home?.team?.id) ? -1 : 0;
+    const togo = Number(sit.distance) || 0;
+    const first = dir && togo ? Math.max(0, Math.min(100, spot + dir * togo)) : null;
+    const nums = [10, 20, 30, 40, 50, 40, 30, 20, 10];
+    return `
+      <div class="hfield" aria-label="Ball on ${esc(sit.possessionText)}">
+        <div class="hf-turf">
+          <span class="hf-ez" style="--team:${vividColor(away?.team)}"></span>
+          <div class="hf-play">
+            ${first != null ? `<i class="hf-first" style="left:${first}%"></i>` : ""}
+            <i class="hf-ball" style="left:${spot}%"></i>
+          </div>
+          <span class="hf-ez" style="--team:${vividColor(home?.team)}"></span>
+        </div>
+        <div class="hf-nums"><span></span><div>${nums.map((n, i) => `<b style="left:${(i + 1) * 10}%">${n}</b>`).join("")}</div><span></span></div>
       </div>`;
   }
 
@@ -1227,15 +1292,21 @@
     ["netPassingYards", "Passing Yards"],
     ["rushingYards", "Rushing Yards"],
     ["firstDowns", "1st Downs"],
-    ["thirdDownEff", "3rd Down"],
+    ["thirdDownEff", "3rd Down Efficiency"],
+    ["fourthDownEff", "4th Down Efficiency"],
+    ["fumblesLost", "Fumbles Lost"],
+    ["interceptions", "Interceptions"],
     ["turnovers", "Turnovers"],
-    ["totalPenaltiesYards", "Penalties"],
-    ["possessionTime", "Possession"],
+    ["penalties", "Penalties"],
+    ["penaltyYards", "Penalty Yards"],
+    ["possessionTime", "Time of Possession"],
   ];
 
-  // A number to size the bars by: "21:40" -> seconds, "5-9" -> 5, "47.5" -> 47.5.
+  // A number to size the bars by: "21:40" -> seconds, "4/10" -> 0.4, "47.5" -> 47.5.
   function statNumber(v) {
     const s = String(v ?? "");
+    const r = /^(\d+)\/(\d+)$/.exec(s);
+    if (r) return Number(r[2]) ? Number(r[1]) / Number(r[2]) : 0;
     const t = /^(\d+):(\d{2})$/.exec(s);
     if (t) return Number(t[1]) * 60 + Number(t[2]);
     const m = /\d+(?:\.\d+)?/.exec(s);
@@ -1245,7 +1316,20 @@
   function teamStatsCard(summary, league) {
     const teams = summary?.boxscore?.teams;
     if (!Array.isArray(teams) || teams.length !== 2) return "";
-    const byName = (t) => Object.fromEntries((t.statistics || []).filter((s) => s.displayValue != null).map((s) => [s.name, s]));
+    const byName = (t) => {
+      const out = Object.fromEntries((t.statistics || []).filter((s) => s.displayValue != null).map((s) => [s.name, s]));
+      // "2-10" penalties become a count and yards, and efficiencies read "4/10", as Apple shows them.
+      const pen = /^(\d+)-(\d+)$/.exec(out.totalPenaltiesYards?.displayValue || "");
+      if (pen) {
+        out.penalties = { displayValue: pen[1] };
+        out.penaltyYards = { displayValue: pen[2] };
+      }
+      for (const n of ["thirdDownEff", "fourthDownEff"]) {
+        if (out[n]) out[n] = { ...out[n], displayValue: String(out[n].displayValue).replace("-", "/") };
+      }
+      if (out.fumblesLost || out.interceptions) delete out.turnovers;
+      return out;
+    };
     // Box score lists teams away first, but don't rely on it.
     const awayId = sides(state.openGame?.event?.competitions?.[0]).away?.team?.id;
     const ordered = String(teams[1].team?.id) === String(awayId) ? [teams[1], teams[0]] : teams;
@@ -1278,7 +1362,9 @@
 
   function leadersCard(summary, ev) {
     const comp = ev.competitions?.[0] || {};
+    const awayId = String(sides(comp).away?.team?.id);
     const groups = (summary?.leaders || []).filter((g) => g.leaders?.length);
+    groups.sort((x, y) => Number(String(y.team?.id) === awayId) - Number(String(x.team?.id) === awayId));
     if (groups.length === 2) {
       const cats = groups[0].leaders.slice(0, 3);
       const rows = cats
@@ -1308,6 +1394,54 @@
       );
     }
     return "";
+  }
+
+  // ---- box score ----
+
+  // Columns worth showing on a phone, by sport; anything else falls back to the first six.
+  const BOX_COLUMNS = {
+    basketball: ["MIN", "PTS", "REB", "AST", "FG", "3PT"],
+    hockey: ["G", "A", "+/-", "SOG", "HT", "TOI", "SA", "GA", "SV", "SV%"],
+    baseball: ["AB", "R", "H", "RBI", "BB", "K", "IP", "ER", "ERA"],
+  };
+
+  const titleCase = (s) => String(s || "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
+
+  function boxScoreCards(summary, ev, league) {
+    const players = summary?.boxscore?.players;
+    if (!Array.isArray(players) || !players.length) return "";
+    const awayId = String(sides(ev.competitions?.[0]).away?.team?.id);
+    const ordered = players.slice().sort((x, y) => Number(String(y.team?.id) === awayId) - Number(String(x.team?.id) === awayId));
+    const cards = ordered.map((tp) => {
+      const sections = (tp.statistics || [])
+        .map((cat) => {
+          const labels = cat.labels || [];
+          const athletes = (cat.athletes || []).filter((a) => a.stats?.length && !a.didNotPlay);
+          if (!labels.length || !athletes.length) return "";
+          const pref = (BOX_COLUMNS[league.sport] || []).map((l) => labels.indexOf(l)).filter((i) => i >= 0);
+          const cols = pref.length >= 3 ? pref.slice(0, 6) : labels.map((_, i) => i).slice(0, 6);
+          const title = cat.text || titleCase(cat.name) || "Players";
+          return `
+            <table class="box">
+              <thead><tr><th>${esc(title)}</th>${cols.map((i) => `<th>${esc(labels[i])}</th>`).join("")}</tr></thead>
+              <tbody>
+                ${athletes
+                  .map((a) => {
+                    const at = a.athlete || {};
+                    return `<tr><th scope="row"><span class="box-name">${esc(at.shortName || at.displayName)}</span>${
+                      at.position?.abbreviation ? ` <span class="box-pos">${esc(at.position.abbreviation)}</span>` : ""
+                    }</th>${cols.map((i) => `<td>${esc(a.stats[i] ?? "")}</td>`).join("")}</tr>`;
+                  })
+                  .join("")}
+              </tbody>
+            </table>`;
+        })
+        .join("");
+      if (!sections) return "";
+      const team = tp.team || {};
+      return `<section class="gcard box-card"><h3 class="box-team">${logo(team, "xs")}${esc(team.shortDisplayName || team.displayName || team.abbreviation)}</h3>${sections}</section>`;
+    });
+    return cards.join("");
   }
 
   function infoCard(ev) {
@@ -1618,13 +1752,37 @@
   $("prev-game").addEventListener("click", () => stepGame(-1));
   $("next-game").addEventListener("click", () => stepGame(1));
 
+  detailEl.addEventListener("scroll", updateStuck, { passive: true });
+
+  // Share the score: the phone's share sheet where there is one, otherwise copy it.
+  $("share-game").addEventListener("click", async () => {
+    const ev = state.openGame?.event;
+    if (!ev) return;
+    const { away, home } = sides(ev.competitions?.[0]);
+    const st = gameState(ev);
+    const text =
+      st === "pre"
+        ? `${away?.team?.abbreviation} at ${home?.team?.abbreviation} · ${startText(ev, true)}`
+        : `${away?.team?.abbreviation} ${away?.score} – ${home?.score} ${home?.team?.abbreviation} · ${ev.status?.type?.shortDetail || ""}`;
+    const url = `${location.origin}${location.pathname}#${ev._league}`;
+    try {
+      if (navigator.share) await navigator.share({ title: ev.name || "Scoreline", text, url });
+      else {
+        await navigator.clipboard.writeText(`${text}\n${url}`);
+        toast("Score copied");
+      }
+    } catch {
+      /* share sheet dismissed */
+    }
+  });
+
   // Swipe sideways between games, like flipping through cards.
   let touch = null;
   detailEl.addEventListener(
     "touchstart",
     (e) => {
       const t = e.touches[0];
-      touch = e.target.closest(".table-scroll, .gd-tabs") ? null : { x: t.clientX, y: t.clientY };
+      touch = e.target.closest(".table-scroll, .gd-tabs, .box-card") ? null : { x: t.clientX, y: t.clientY };
     },
     { passive: true }
   );
