@@ -90,3 +90,14 @@ jobs:
             [ -z "$id" ] && continue
             curl -sS --max-time 20 "https://site.api.espn.com/apis/site/v2/sports/$lg/summary?event=$id" | jq -c '{n: ((.videos // []) | length), first: ((.videos // [])[0] // {} | {headline, description, duration, thumbnail, lastModified, keys: keys, links: .links})}' | cut -c1-3000
           done
+          echo "== highlight sources per live NFL game"
+          board=$(curl -sS --max-time 20 "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard")
+          news=$(get "/espn/apis/site/v2/sports/football/nfl/news?limit=50")
+          yt=$(get "/videos?league=nfl")
+          echo "$board" | jq -r '.events[] | select(.status.type.state != "pre") | [.id, .shortName, .status.type.shortDetail, (.competitions[0].competitors | map(.team.shortDisplayName) | join("|"))] | @tsv' | while IFS=$'\t' read -r id name status teams; do
+            espn=$(curl -sS --max-time 20 "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=$id" | jq '(.videos // []) | length')
+            ytn=$(echo "$yt" | jq --arg t "$teams" '[.items[] | select(.title | test($t; "i"))] | length')
+            nn=$(echo "$news" | jq --arg t "$teams" '[.articles[] | select(.type == "Media" and (.headline | test($t; "i")))] | length')
+            echo "$name ($status): espn clips=$espn, youtube=$ytn, espn video stories=$nn"
+          done
+          echo "-- newest NFL YouTube video:"; echo "$yt" | jq -r '.items | [.[0].published, .[-1].published] | "newest \(.[0]), oldest \(.[1])"'
