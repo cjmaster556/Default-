@@ -687,6 +687,10 @@
   // part of the game moved on while the clock didn't, or the clock sat still for
   // well over this game's normal gap between ESPN updates.
   const DEFAULT_FEED_GAP = 10; // seconds between clock changes until we've measured this game's
+  // We usually learn of a stoppage a few seconds after it, by which time our
+  // clock has run past it. For small overshoots, hold the clock where it is
+  // instead of jumping back up, and let the real clock catch up once play resumes.
+  const HOLD_MAX = 8;
   const debugClock = new URLSearchParams(location.search).has("debug");
 
   // Plays after which the clock is stopped until the feed shows it moving again.
@@ -763,9 +767,15 @@
       const newPlay = sig !== prev.sig;
       const whistle = newPlay && STOP_PLAYS[sport]?.test(ev.competitions?.[0]?.situation?.lastPlay?.text || "");
 
+      // The clock shown right now, to hold at if this update says it stopped.
+      const holdAt = (secs) => {
+        const shown = clockSeconds(ev._key);
+        return prev.running && shown != null && secs > shown && secs - shown <= HOLD_MAX ? shown : prev.hold ?? null;
+      };
+
       if (p.secs === prev.reported) {
         if (prev.running && (whistle || newPlay || now - prev.changedAt > staleAfter(prev) * 1000)) {
-          state.clocks.set(ev._key, { ...prev, running: false, anchor: p.secs, anchorAt: now, sig, higherSince: null });
+          state.clocks.set(ev._key, { ...prev, running: false, anchor: p.secs, anchorAt: now, sig, higherSince: null, hold: holdAt(p.secs) });
         } else if (newPlay || prev.higherSince) {
           state.clocks.set(ev._key, { ...prev, sig, higherSince: null });
         }
@@ -791,7 +801,9 @@
         const shown = clockSeconds(ev._key);
         if (shown != null && p.secs >= shown && p.secs - shown <= 3) anchor = shown;
       }
-      state.clocks.set(ev._key, { reported: p.secs, anchor, anchorAt: now, changedAt: now, running, period, tenths: p.tenths, sig, gaps, higherSince: null });
+      // Stopping: maybe hold where we are. Resuming: keep any hold until the real clock passes it.
+      const hold = !running ? holdAt(p.secs) : prev.hold != null && p.secs > prev.hold ? prev.hold : null;
+      state.clocks.set(ev._key, { reported: p.secs, anchor, anchorAt: now, changedAt: now, running, period, tenths: p.tenths, sig, gaps, higherSince: null, hold });
     }
     const anyRunning = debugClock || [...state.clocks.values()].some((c) => c.running);
     if (anyRunning && !state.clockTimer) state.clockTimer = setInterval(tickClocks, 100);
@@ -804,10 +816,17 @@
   function clockSeconds(key) {
     const c = state.clocks.get(key);
     if (!c) return null;
-    if (!c.running) return c.anchor;
-    // Never run further past the last change than the feed would normally take to update.
-    const elapsed = Math.min((Date.now() - c.anchorAt) / 1000, staleAfter(c) + 3);
-    return Math.max(0, c.anchor - elapsed);
+    let secs = c.anchor;
+    if (c.running) {
+      // Never run further past the last change than the feed would normally take to update.
+      const elapsed = Math.min((Date.now() - c.anchorAt) / 1000, staleAfter(c) + 3);
+      secs = Math.max(0, c.anchor - elapsed);
+    }
+    if (c.hold != null) {
+      if (c.running && secs < c.hold) c.hold = null; // the real clock has caught up
+      else return c.hold;
+    }
+    return secs;
   }
 
   function formatClock(secs, tenths) {
