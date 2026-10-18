@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>NFL Live</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏈</text></svg>" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="title-row">
+      <h1>NFL Live</h1>
+      <span id="live-indicator" class="live-indicator" hidden><span class="dot"></span>Live</span>
+    </div>
+    <div class="controls">
+      <button id="prev-week" class="icon-btn" aria-label="Previous week">&#8249;</button>
+      <select id="week-select" aria-label="Week"></select>
+      <button id="next-week" class="icon-btn" aria-label="Next week">&#8250;</button>
+    </div>
+    <div class="filters" role="tablist" aria-label="Filter games">
+      <button class="filter active" data-filter="all" role="tab">All</button>
+      <button class="filter" data-filter="in" role="tab">Live</button>
+      <button class="filter" data-filter="pre" role="tab">Upcoming</button>
+      <button class="filter" data-filter="post" role="tab">Final</button>
+      <button class="filter" data-filter="fav" role="tab">&#9733; Mine</button>
+    </div>
+    <p id="status-line" class="status-line" aria-live="polite"></p>
+  </header>
+
+  <main>
+    <section id="games" class="games"></section>
+    <p id="empty-state" class="empty-state" hidden></p>
+  </main>
+
+  <dialog id="game-dialog" class="game-dialog">
+    <div class="dialog-head">
+      <button id="close-dialog" class="icon-btn" aria-label="Close">&times;</button>
+    </div>
+    <div id="game-detail" class="game-detail"></div>
+  </dialog>
+
+  <script src="demo.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
