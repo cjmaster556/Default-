@@ -7,7 +7,7 @@
 
   // Refresh cadence depends on what's happening: fast while games are live,
   // slower when a kickoff is near, and lazy otherwise.
-  const REFRESH_LIVE = 15 * 1000;
+  const REFRESH_LIVE = 10 * 1000;
   const REFRESH_SOON = 60 * 1000;
   const REFRESH_IDLE = 5 * 60 * 1000;
 
