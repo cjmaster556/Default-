@@ -740,122 +740,6 @@ main {
 
 /* ---------- game detail ---------- */
 
-.detail-header {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: start;
-  gap: 8px;
-  margin: 0 -16px;
-  padding: 8px 16px 18px;
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--away) 30%, transparent),
-    transparent 40%,
-    transparent 60%,
-    color-mix(in srgb, var(--home) 30%, transparent)
-  );
-}
-
-.dh-team {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  text-align: center;
-}
-
-.dh-name {
-  font-weight: 700;
-}
-
-.dh-record {
-  font-size: 0.75rem;
-  color: var(--muted);
-}
-
-.follow-btn {
-  margin-top: 4px;
-  padding: 4px 12px;
-  border: 1px solid var(--faint);
-  border-radius: 999px;
-  background: transparent;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.follow-btn.on {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #fff;
-}
-
-.dh-score {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding-top: 10px;
-  text-align: center;
-}
-
-.dh-nums {
-  display: flex;
-  gap: 8px;
-  font-family: var(--font-num);
-  font-size: 2.6rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-  white-space: nowrap;
-}
-
-.dh-nums .lost,
-.dh-nums .dash {
-  color: var(--muted);
-}
-
-.dh-vs {
-  font-size: 1.4rem;
-  font-weight: 700;
-  color: var(--muted);
-}
-
-.dh-status {
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.dh-status.live {
-  color: var(--live);
-}
-
-.dh-status .clock {
-  font-size: 1.15rem;
-}
-
-.dh-note {
-  font-size: 0.75rem;
-  color: var(--muted);
-}
-
-.d-section {
-  padding: 16px 0 6px;
-}
-
-.d-section + .d-section {
-  border-top: 1px solid var(--line);
-}
-
-.d-section h3 {
-  margin: 0 0 10px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
 .table-scroll {
   overflow-x: auto;
 }
@@ -1040,6 +924,448 @@ table {
   margin: 0;
 }
 
+/* ---------- game sheet (Apple Sports style) ---------- */
+
+.game-sheet {
+  --glass: rgba(255, 255, 255, 0.13);
+  --glass-line: rgba(255, 255, 255, 0.18);
+  --soft: rgba(255, 255, 255, 0.72);
+  --away-ui: color-mix(in srgb, var(--away) 60%, white);
+  --home-ui: color-mix(in srgb, var(--home) 60%, white);
+  height: calc(100dvh - env(safe-area-inset-top) - 10px);
+  max-height: none;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.05) 0%, rgba(0, 0, 0, 0.35) 45%, rgba(0, 0, 0, 0.7) 100%),
+    radial-gradient(70% 45% at 85% 20%, rgba(255, 255, 255, 0.16), transparent 70%),
+    linear-gradient(150deg, var(--away) 0%, color-mix(in srgb, var(--away) 50%, var(--home)) 50%, var(--home) 100%),
+    var(--card);
+}
+
+@media (min-width: 700px) {
+  .game-sheet {
+    height: min(92dvh, 900px);
+  }
+}
+
+.game-sheet .sheet-head {
+  gap: 4px;
+}
+
+.game-sheet .sheet-head .icon-btn {
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.game-sheet .sheet-head .icon-btn:disabled {
+  opacity: 0.25;
+}
+
+.game-sheet .sheet-label {
+  min-width: 3.5em;
+  text-align: center;
+  color: var(--soft);
+}
+
+.sheet-body.from-right {
+  animation: from-right 0.25s ease-out;
+}
+
+.sheet-body.from-left {
+  animation: from-left 0.25s ease-out;
+}
+
+@keyframes from-right {
+  from {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+}
+
+@keyframes from-left {
+  from {
+    transform: translateX(-40px);
+    opacity: 0;
+  }
+}
+
+.gd-hero {
+  padding: 4px 0 6px;
+}
+
+.gd-teams {
+  display: grid;
+  grid-template-columns: 1fr minmax(84px, auto) 1fr;
+  align-items: start;
+  gap: 6px;
+}
+
+.gd-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  text-align: center;
+}
+
+.gd-score {
+  font-family: var(--font-num);
+  font-size: 4.4rem;
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.gd-side.lost .gd-score {
+  color: var(--soft);
+  opacity: 0.75;
+}
+
+.gd-timeouts {
+  display: flex;
+  gap: 4px;
+  height: 4px;
+}
+
+.gd-timeouts i {
+  width: 14px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.gd-timeouts i.on {
+  background: #fff;
+}
+
+.gd-logo {
+  position: relative;
+  margin-top: 8px;
+}
+
+.gd-logo .logo-lg {
+  width: 56px;
+  height: 56px;
+}
+
+.gd-ball {
+  position: absolute;
+  right: -10px;
+  top: 4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.3);
+}
+
+.gd-name {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.gd-name .rank {
+  color: var(--soft);
+}
+
+.gd-rec {
+  font-size: 0.8rem;
+  color: var(--soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.follow-btn {
+  margin-top: 4px;
+  padding: 5px 12px;
+  border: 1px solid var(--glass-line);
+  border-radius: 999px;
+  background: var(--glass);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.follow-btn.on {
+  border-color: transparent;
+  background: #fff;
+  color: #000;
+}
+
+.gd-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 26px;
+  text-align: center;
+}
+
+.gd-status {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.gd-status.live {
+  color: #fff;
+}
+
+.gd-status .clock {
+  display: block;
+  font-size: 1.35rem;
+  color: #fff;
+}
+
+.gd-status .clock.stopped {
+  color: var(--soft);
+}
+
+.gd-note {
+  font-size: 0.75rem;
+  color: var(--soft);
+}
+
+.gd-lines {
+  margin-top: 16px;
+}
+
+.gd-lines .linescore thead th {
+  color: var(--soft);
+}
+
+.gd-lines .linescore tbody tr:first-child th,
+.gd-lines .linescore tbody tr:first-child td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.gd-now {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.gd-now .situation,
+.gd-now .last-play {
+  color: #fff;
+}
+
+.gd-now .last-play {
+  color: var(--soft);
+}
+
+.gd-tv {
+  margin: 12px 0 0;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--soft);
+}
+
+.gd-tabs {
+  display: flex;
+  justify-content: space-around;
+  gap: 4px;
+  margin: 14px -4px 12px;
+}
+
+.gd-tab {
+  flex: 1;
+  padding: 8px 4px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--soft);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.gd-tab.active {
+  background: var(--glass);
+  color: #fff;
+}
+
+.gd-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gcard {
+  padding: 14px 14px 10px;
+  border: 1px solid var(--glass-line);
+  border-radius: 22px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(24px) saturate(150%);
+}
+
+.gcard h3 {
+  margin: 0 0 10px;
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.gcard-foot {
+  margin: 8px 0 2px;
+  font-size: 0.7rem;
+  color: var(--soft);
+}
+
+.gcard .plays li + li,
+.gcard .drives li + li,
+.gcard .leader-row + .leader-row,
+.gcard .team-stats tbody tr + tr {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.gcard .play-when,
+.gcard .drive-desc,
+.gcard .leader-cat,
+.gcard .leader-line,
+.gcard .info dt {
+  color: var(--soft);
+}
+
+.drives li.current .drive-result {
+  color: var(--gold);
+}
+
+.odds {
+  table-layout: fixed;
+}
+
+.odds th,
+.odds td {
+  padding: 8px 4px;
+  text-align: center;
+  font-size: 0.85rem;
+  vertical-align: middle;
+}
+
+.odds thead th {
+  font-weight: 500;
+  font-size: 0.75rem;
+  color: var(--soft);
+}
+
+.odds tbody th {
+  font-weight: 700;
+}
+
+.odds tbody tr:first-child > * {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.odds td + td,
+.odds tbody th + td {
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.odd-main {
+  display: block;
+  font-weight: 700;
+}
+
+.odd-sub {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--soft);
+}
+
+.sbar-head {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--soft);
+}
+
+.sbar {
+  padding: 6px 0 8px;
+}
+
+.sbar-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sv {
+  font-family: var(--font-num);
+  font-size: 1.25rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.sl {
+  font-size: 0.85rem;
+  color: var(--soft);
+  text-align: center;
+}
+
+.sbar-track {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.sbar-track i {
+  flex-basis: 0;
+  min-width: 4px;
+  height: 5px;
+  border-radius: 3px;
+}
+
+.sbar-track i.away {
+  background: var(--away-ui);
+}
+
+.sbar-track i.home {
+  background: var(--home-ui);
+}
+
+.standings th,
+.standings td {
+  padding: 7px 4px;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.standings thead th {
+  color: var(--soft);
+  font-weight: 500;
+  font-size: 0.75rem;
+}
+
+.standings tbody th {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.standings tbody tr + tr {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.standings tr.mine {
+  font-weight: 800;
+}
+
+.standings tr.mine th {
+  font-weight: 800;
+}
+
+@media (max-width: 400px) {
+  .gd-score {
+    font-size: 3.6rem;
+  }
+}
+
 /* ---------- team picker ---------- */
 
 .picker-controls {
@@ -1117,15 +1443,14 @@ table {
   .score {
     font-size: 1.85rem;
   }
-  .dh-nums {
-    font-size: 2.1rem;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .dot,
   .card.scored,
-  .sheet[open] {
+  .sheet[open],
+  .sheet-body.from-left,
+  .sheet-body.from-right {
     animation: none;
   }
   .ball,

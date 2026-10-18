@@ -302,6 +302,44 @@
             { team: BUF, displayResult: "Touchdown", description: "6 plays, 75 yards, 2:40" },
             { team: KC, displayResult: "Field Goal", description: "7 plays, 49 yards, 2:22" },
           ],
+          current: { id: "d10", team: BUF, description: "6 plays, 57 yards, 2:31" },
+        },
+        pickcenter: [
+          {
+            provider: { name: "DraftKings" },
+            details: "BUF -2.5",
+            overUnder: 47.5,
+            overOdds: -110,
+            underOdds: -110,
+            awayTeamOdds: { moneyLine: 120, spreadOdds: -108 },
+            homeTeamOdds: { moneyLine: -142, spreadOdds: -112 },
+          },
+        ],
+        standings: {
+          groups: [
+            {
+              header: "AFC East",
+              standings: {
+                entries: [
+                  ["2", "Buffalo Bills", 4, 2],
+                  ["20", "New York Jets", 3, 3],
+                  ["15", "Miami Dolphins", 2, 4],
+                  ["17", "New England Patriots", 2, 4],
+                ].map(([id, team, w, l]) => ({ id, team, stats: [{ name: "wins", displayValue: String(w) }, { name: "losses", displayValue: String(l) }, { name: "ties", displayValue: "0" }, { name: "winPercent", displayValue: (w / (w + l)).toFixed(3).replace(/^0/, "") }] })),
+              },
+            },
+            {
+              header: "AFC West",
+              standings: {
+                entries: [
+                  ["12", "Kansas City Chiefs", 5, 1],
+                  ["24", "Los Angeles Chargers", 4, 2],
+                  ["7", "Denver Broncos", 3, 3],
+                  ["13", "Las Vegas Raiders", 1, 5],
+                ].map(([id, team, w, l]) => ({ id, team, stats: [{ name: "wins", displayValue: String(w) }, { name: "losses", displayValue: String(l) }, { name: "ties", displayValue: "0" }, { name: "winPercent", displayValue: (w / (w + l)).toFixed(3).replace(/^0/, "") }] })),
+              },
+            },
+          ],
         },
         leaders: [
           { team: KC, leaders: [leader("passingYards", "Passing", "P. Mahomes", "17/24, 211 YDS, 1 TD"), leader("rushingYards", "Rushing", "K. Hunt", "11 CAR, 48 YDS, 1 TD"), leader("receivingYards", "Receiving", "T. Kelce", "6 REC, 72 YDS, 1 TD")] },
@@ -309,8 +347,8 @@
         ],
         boxscore: {
           teams: [
-            { team: KC, statistics: [stat("totalYards", "Total Yards", "301"), stat("netPassingYards", "Passing", "205"), stat("rushingYards", "Rushing", "96"), stat("firstDowns", "1st Downs", "18"), stat("turnovers", "Turnovers", "0"), stat("possessionTime", "Possession", "21:40")] },
-            { team: BUF, statistics: [stat("totalYards", "Total Yards", "287"), stat("netPassingYards", "Passing", "180"), stat("rushingYards", "Rushing", "107"), stat("firstDowns", "1st Downs", "16"), stat("turnovers", "Turnovers", "1"), stat("possessionTime", "Possession", "15:38")] },
+            { team: KC, statistics: [stat("totalOffensivePlays", "Total Plays", "35"), stat("yardsPerPlay", "Yards per Play", "8.6"), stat("thirdDownEff", "3rd down efficiency", "5-9"), stat("totalYards", "Total Yards", "301"), stat("netPassingYards", "Passing", "205"), stat("rushingYards", "Rushing", "96"), stat("firstDowns", "1st Downs", "18"), stat("turnovers", "Turnovers", "0"), stat("possessionTime", "Possession", "21:40")] },
+            { team: BUF, statistics: [stat("totalOffensivePlays", "Total Plays", "29"), stat("yardsPerPlay", "Yards per Play", "9.9"), stat("thirdDownEff", "3rd down efficiency", "4-8"), stat("totalYards", "Total Yards", "287"), stat("netPassingYards", "Passing", "180"), stat("rushingYards", "Rushing", "107"), stat("firstDowns", "1st Downs", "16"), stat("turnovers", "Turnovers", "1"), stat("possessionTime", "Possession", "15:38")] },
           ],
         },
       };

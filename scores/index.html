@@ -35,9 +35,12 @@
     <p id="status-line" class="status-line"></p>
   </main>
 
-  <dialog id="game-dialog" class="sheet">
+  <dialog id="game-dialog" class="sheet game-sheet">
     <div class="sheet-head">
+      <button id="prev-game" class="icon-btn" aria-label="Previous game">&#8249;</button>
       <span id="game-league" class="sheet-label"></span>
+      <button id="next-game" class="icon-btn" aria-label="Next game">&#8250;</button>
+      <span class="spacer"></span>
       <button id="close-game" class="icon-btn" aria-label="Close">&times;</button>
     </div>
     <div id="game-detail" class="sheet-body"></div>

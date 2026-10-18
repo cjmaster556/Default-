@@ -55,6 +55,7 @@
     lastScores: new Map(),
     clocks: new Map(),
     openGame: null, // { key, event, summary }
+    detailTab: "stats",
     alerts: loadAlerts(),
     alertSeen: new Map(), // event key -> { a, h, st } as of the last check
     seq: 0,
@@ -953,17 +954,31 @@
     if (fresh) state.openGame.event = fresh;
   }
 
-  function openGame(key) {
+  // The games you can swipe between: the list you opened this one from.
+  const gameOrder = () => sortEvents(currentEvents()).map((e) => e._key);
+
+  function openGame(key, dir = 0) {
     const ev = findEvent(key);
     if (!ev) return;
-    state.openGame = { key, event: ev, summary: null };
-    $("game-league").textContent = byKey[ev._league].name;
+    const same = state.openGame?.key === key;
+    state.openGame = { key, event: ev, summary: same ? state.openGame.summary : null };
     renderDetail();
     if (!gameDialog.open) gameDialog.showModal();
-    detailEl.scrollTop = 0;
+    if (!same) detailEl.scrollTop = 0;
+    if (dir) {
+      detailEl.classList.remove("from-left", "from-right");
+      void detailEl.offsetWidth; // restart the animation
+      detailEl.classList.add(dir > 0 ? "from-right" : "from-left");
+    }
     refreshDetail();
     // Keep the open game fresh even when it isn't on the current view's list.
     if (gameState(ev) === "in") schedule();
+  }
+
+  function stepGame(dir) {
+    const keys = gameOrder();
+    const next = keys[keys.indexOf(state.openGame?.key) + dir];
+    if (next) openGame(next, dir);
   }
 
   async function refreshDetail() {
@@ -996,79 +1011,111 @@
   function renderDetail() {
     const og = state.openGame;
     if (!og) return;
-    const scroll = detailEl.scrollTop;
     const ev = og.event;
-    detailEl.innerHTML = detailHeader(ev) + (og.summary ? detailBody(ev, og.summary) : detailBody(ev, null) + '<p class="loading">Loading game details…</p>');
+    const { away, home } = sides(ev.competitions?.[0]);
+    gameDialog.style.setProperty("--away", teamColor(away?.team));
+    gameDialog.style.setProperty("--home", teamColor(home?.team));
+    $("game-league").textContent = byKey[ev._league].name;
+    const keys = gameOrder();
+    const i = keys.indexOf(og.key);
+    $("prev-game").disabled = i <= 0;
+    $("next-game").disabled = i < 0 || i >= keys.length - 1;
+
+    const tabs = detailTabs(ev, og.summary);
+    if (!tabs.some((t) => t.key === state.detailTab)) state.detailTab = tabs[0].key;
+    const tab = tabs.find((t) => t.key === state.detailTab);
+    const scroll = detailEl.scrollTop;
+    detailEl.innerHTML = `
+      ${hero(ev)}
+      <nav class="gd-tabs" role="tablist">
+        ${tabs.map((t) => `<button class="gd-tab${t === tab ? " active" : ""}" role="tab" data-tab="${t.key}" aria-selected="${t === tab}">${t.label}</button>`).join("")}
+      </nav>
+      <div class="gd-panel">${tab.html}</div>`;
     detailEl.scrollTop = scroll;
   }
 
-  function detailHeader(ev) {
-    const comp = ev.competitions?.[0] || {};
-    const { away, home } = sides(comp);
+  function detailTabs(ev, summary) {
+    const league = byKey[ev._league];
     const st = gameState(ev);
-    const followBtn = (c) => {
-      const key = `${ev._league}:${c?.team?.id}`;
-      const on = state.favorites.has(key);
-      return `<button class="follow-btn${on ? " on" : ""}" data-follow="${esc(key)}">${on ? "Following" : "Follow"}</button>`;
-    };
-    const teamSide = (c) => `
-      <div class="dh-team">
-        ${logo(c?.team, "lg")}
-        <span class="dh-name">${rank(c) ? `<span class="rank">${rank(c)}</span>` : ""}${esc(c?.team?.shortDisplayName || c?.team?.abbreviation)}</span>
-        <span class="dh-record">${esc(recordText(c))}</span>
-        ${followBtn(c)}
-      </div>`;
-    const lost = (c) => st === "post" && comp.competitors?.some((o) => o !== c && o.winner);
-    return `
-      <div class="detail-header" style="--away:${teamColor(away?.team)};--home:${teamColor(home?.team)}">
-        ${teamSide(away)}
-        <div class="dh-score">
-          ${
-            st === "pre"
-              ? '<span class="dh-vs">vs</span>'
-              : `<span class="dh-nums"><span class="${lost(away) ? "lost" : ""}">${esc(away?.score)}</span><span class="dash">–</span><span class="${lost(home) ? "lost" : ""}">${esc(home?.score)}</span></span>`
-          }
-          <span class="dh-status${st === "in" ? " live" : ""}">${statusHTML(ev, true)}</span>
-          ${note(comp) ? `<span class="dh-note">${esc(note(comp))}</span>` : ""}
-        </div>
-        ${teamSide(home)}
-      </div>`;
+    const loading = summary ? "" : '<p class="loading">Loading game details…</p>';
+    const stats = [oddsCard(ev, summary), teamStatsCard(summary, league), leadersCard(summary, ev), infoCard(ev)].join("");
+    let plays = "";
+    if (summary) {
+      if (league.sport === "football" || league.sport === "hockey") plays += scoringCard(summary, league);
+      plays += league.sport === "football" ? drivesCard(summary) : playsCard(summary, league);
+    }
+    const tabs = [
+      { key: "stats", label: "Stats", html: stats + loading },
+      {
+        key: "plays",
+        label: "Play-by-Play",
+        html: plays || loading || `<p class="loading">${st === "pre" ? "Plays will show up here once the game starts." : "No plays yet."}</p>`,
+      },
+    ];
+    const standings = standingsCard(summary, ev);
+    if (standings) tabs.push({ key: "standings", label: "Standings", html: standings });
+    return tabs;
   }
 
-  function detailBody(ev, summary) {
+  function hero(ev) {
     const league = byKey[ev._league];
     const comp = ev.competitions?.[0] || {};
     const { away, home } = sides(comp);
     const st = gameState(ev);
-    const out = [];
+    const sit = comp.situation || {};
+    const tv = broadcasts(comp);
+    const tvLine = tv ? `${st === "in" ? "Live on" : st === "pre" ? "On" : "Aired on"} ${tv}` : "";
 
+    const side = (c) => {
+      const team = c?.team || {};
+      const key = `${ev._league}:${team.id}`;
+      const on = state.favorites.has(key);
+      const lost = st === "post" && comp.competitors?.some((o) => o !== c && o.winner);
+      const hasBall = league.sport === "football" && st === "in" && String(sit.possession) === String(team.id);
+      const timeouts = league.sport === "football" && st === "in" ? (c?.homeAway === "home" ? sit.homeTimeouts : sit.awayTimeouts) : null;
+      return `
+        <div class="gd-side${lost ? " lost" : ""}">
+          ${st === "pre" ? "" : `<span class="gd-score">${esc(c?.score)}</span>`}
+          ${
+            timeouts != null
+              ? `<span class="gd-timeouts" aria-label="${timeouts} timeouts left">${[0, 1, 2].map((i) => `<i class="${i < timeouts ? "on" : ""}"></i>`).join("")}</span>`
+              : ""
+          }
+          <span class="gd-logo">${logo(team, "lg")}${hasBall ? '<span class="gd-ball" title="Has the ball"></span>' : ""}</span>
+          <span class="gd-name">${rank(c) ? `<span class="rank">${rank(c)}</span>` : ""}${esc(team.shortDisplayName || team.abbreviation)}</span>
+          <span class="gd-rec">${esc(recordText(c))}</span>
+          <button class="follow-btn${on ? " on" : ""}" data-follow="${esc(key)}" aria-pressed="${on}">${on ? "★ Following" : "☆ Follow"}</button>
+        </div>`;
+    };
+
+    let now = "";
     if (st === "in") {
-      const sit = comp.situation || {};
-      if (league.sport === "football" && (sit.downDistanceText || sit.lastPlay)) {
-        out.push(`
-          <section class="d-section">
-            <h3>On the field</h3>
-            ${sit.downDistanceText ? `<p class="situation${sit.isRedZone ? " redzone" : ""}">${esc(sit.downDistanceText)}${sit.isRedZone ? ' <span class="rz">Red Zone</span>' : ""}</p>` : ""}
-            ${miniField(sit, away, home)}
-            ${sit.lastPlay?.text ? `<p class="last-play">${esc(sit.lastPlay.text)}</p>` : ""}
-          </section>`);
+      if (league.sport === "football" && (sit.downDistanceText || sit.lastPlay?.text)) {
+        now = `
+          ${sit.downDistanceText ? `<p class="situation${sit.isRedZone ? " redzone" : ""}">${esc(sit.downDistanceText)}${sit.isRedZone ? ' <span class="rz">Red Zone</span>' : ""}</p>` : ""}
+          ${miniField(sit, away, home)}
+          ${sit.lastPlay?.text ? `<p class="last-play">${esc(sit.lastPlay.text)}</p>` : ""}`;
       } else if (league.sport === "baseball") {
-        const b = baseballSituation(sit, true);
-        if (b) out.push(`<section class="d-section"><h3>At bat</h3>${b}</section>`);
+        now = baseballSituation(sit, true);
+      } else if (sit.lastPlay?.text) {
+        now = `<p class="last-play">${esc(sit.lastPlay.text)}</p>`;
       }
     }
 
-    if (st !== "pre") out.push(lineScore(league, away, home));
-
-    if (summary) {
-      if (league.sport === "football" || league.sport === "hockey") out.push(scoringSection(summary, league));
-      if (league.sport === "football") out.push(drivesSection(summary));
-      else out.push(playsSection(summary, league));
-      out.push(leadersSection(summary, comp));
-      out.push(teamStats(summary, league));
-    }
-    out.push(infoSection(ev, comp));
-    return out.join("");
+    return `
+      <div class="gd-hero">
+        <div class="gd-teams">
+          ${side(away)}
+          <div class="gd-mid">
+            <span class="gd-status${st === "in" ? " live" : ""}">${statusHTML(ev, true)}</span>
+            ${note(comp) ? `<span class="gd-note">${esc(note(comp))}</span>` : ""}
+          </div>
+          ${side(home)}
+        </div>
+        ${st !== "pre" ? lineScore(league, away, home, st) : ""}
+        ${now ? `<div class="gd-now">${now}</div>` : ""}
+        ${tvLine ? `<p class="gd-tv">${esc(tvLine)}</p>` : ""}
+      </div>`;
   }
 
   function periodHeads(league, n) {
@@ -1080,14 +1127,16 @@
     });
   }
 
-  function lineScore(league, away, home) {
+  function lineScore(league, away, home, st) {
     const min = league.sport === "baseball" ? 9 : league.sport === "hockey" ? 3 : 4;
     const n = Math.max(min, away?.linescores?.length || 0, home?.linescores?.length || 0);
     const heads = periodHeads(league, n);
     const baseball = league.sport === "baseball";
     const val = (c, i) => {
       const l = c?.linescores?.[i];
-      return l ? (l.displayValue ?? l.value ?? "") : "";
+      const v = l ? (l.displayValue ?? l.value) : null;
+      // Periods not played yet show a dash, as on a scoreboard.
+      return v == null || v === "" ? (st === "post" && baseball ? "x" : "–") : v;
     };
     const row = (c) => `
       <tr>
@@ -1097,100 +1146,139 @@
         ${baseball ? `<td>${esc(c?.hits ?? "")}</td><td>${esc(c?.errors ?? "")}</td>` : ""}
       </tr>`;
     return `
-      <section class="d-section">
-        <div class="table-scroll">
-          <table class="linescore">
-            <thead><tr><th></th>${heads.map((h) => `<th>${h}</th>`).join("")}<th>${baseball ? "R" : "T"}</th>${baseball ? "<th>H</th><th>E</th>" : ""}</tr></thead>
-            <tbody>${row(away)}${row(home)}</tbody>
-          </table>
-        </div>
-      </section>`;
+      <div class="table-scroll gd-lines">
+        <table class="linescore">
+          <thead><tr><th></th>${heads.map((h) => `<th>${h}</th>`).join("")}<th>${baseball ? "R" : "T"}</th>${baseball ? "<th>H</th><th>E</th>" : ""}</tr></thead>
+          <tbody>${row(away)}${row(home)}</tbody>
+        </table>
+      </div>`;
   }
 
-  function periodLabel(p, league) {
-    if (p?.period?.displayValue && league.sport === "baseball") return p.period.displayValue;
-    const n = p?.period?.number;
-    if (!n) return "";
-    const prefix = league.sport === "hockey" ? "P" : "Q";
-    const reg = league.sport === "hockey" ? 3 : 4;
-    return n > reg ? "OT" : `${prefix}${n}`;
+  const gcard = (title, body, extra = "") => `<section class="gcard${extra}">${title ? `<h3>${esc(title)}</h3>` : ""}${body}</section>`;
+
+  // ---- odds ----
+
+  // Odds come in two shapes (the scoreboard's and the summary's pick center);
+  // read whichever is there.
+  function oddsData(ev, summary) {
+    const comp = ev.competitions?.[0] || {};
+    const o = summary?.pickcenter?.[0] || comp.odds?.[0];
+    if (!o) return null;
+    const { away, home } = sides(comp);
+    const american = (v) => {
+      if (v == null || v === "") return null;
+      const n = Number(v);
+      if (Number.isFinite(n)) return n > 0 ? `+${n}` : `${n}`.replace("-", "\u2212");
+      return String(v).replace(/^-/, "\u2212");
+    };
+
+    let spread = { away: o.pointSpread?.away?.close?.line ?? null, home: o.pointSpread?.home?.close?.line ?? null };
+    if (spread.home == null) {
+      const m = /^([A-Z&]{2,5})\s+([-+]?\d+(?:\.\d+)?)$/.exec(o.details || "");
+      if (m) {
+        const v = Number(m[2]);
+        const homeFav = m[1] === home?.team?.abbreviation;
+        spread = { away: homeFav ? -v : v, home: homeFav ? v : -v };
+      } else if (/^(even|pk)/i.test(o.details || "")) {
+        spread = { away: "PK", home: "PK" };
+      }
+    }
+    const spreadOdds = (s) => o.pointSpread?.[s]?.close?.odds ?? o[`${s}TeamOdds`]?.spreadOdds;
+    const moneyline = (s) => o.moneyline?.[s]?.close?.odds ?? o[`${s}TeamOdds`]?.moneyLine;
+    const total = (k) => {
+      const line = o.total?.[k]?.close?.line;
+      return {
+        line: line ? String(line).replace(/^o/i, "O ").replace(/^u/i, "U ") : o.overUnder != null ? `${k === "over" ? "O" : "U"} ${o.overUnder}` : null,
+        odds: american(o.total?.[k]?.close?.odds ?? o[`${k}Odds`]),
+      };
+    };
+    const rows = [
+      { team: away?.team, spread: american(spread.away), spreadOdds: american(spreadOdds("away")), total: total("over"), ml: american(moneyline("away")) },
+      { team: home?.team, spread: american(spread.home), spreadOdds: american(spreadOdds("home")), total: total("under"), ml: american(moneyline("home")) },
+    ];
+    if (!rows.some((r) => r.spread || r.total.line || r.ml)) return null;
+    return { provider: o.provider?.name, rows };
   }
 
-  function scoringSection(summary, league) {
-    const plays = summary.scoringPlays || [];
-    if (!plays.length) return "";
-    return `
-      <section class="d-section">
-        <h3>Scoring</h3>
-        <ol class="plays">
-          ${plays
-            .map(
-              (p) => `
-            <li>
-              <span class="play-when">${esc(periodLabel(p, league))} ${esc(p.clock?.displayValue || "")}</span>
-              <span class="play-team">${logo(p.team, "xs")}${esc(p.team?.abbreviation || "")}</span>
-              <span class="play-score">${esc(p.awayScore)}–${esc(p.homeScore)}</span>
-              <span class="play-text">${esc(p.text)}</span>
-            </li>`
-            )
+  function oddsCard(ev, summary) {
+    const d = oddsData(ev, summary);
+    if (!d) return "";
+    const cell = (main, sub) => `<td>${main ? `<span class="odd-main">${esc(main)}</span>` : "–"}${sub ? `<span class="odd-sub">${esc(sub)}</span>` : ""}</td>`;
+    return gcard(
+      "Betting Odds",
+      `<table class="odds">
+        <thead><tr><th>Team</th><th>Spread</th><th>Total</th><th>Moneyline</th></tr></thead>
+        <tbody>
+          ${d.rows
+            .map((r) => `<tr><th scope="row">${esc(r.team?.abbreviation)}</th>${cell(r.spread, r.spreadOdds)}${cell(r.total.line, r.total.odds)}${cell(r.ml)}</tr>`)
             .join("")}
-        </ol>
-      </section>`;
+        </tbody>
+      </table>
+      ${d.provider ? `<p class="gcard-foot">Odds provided by ${esc(d.provider)}</p>` : ""}`
+    );
   }
 
-  function drivesSection(summary) {
-    const drives = summary.drives?.previous || [];
-    if (!drives.length) return "";
-    return `
-      <section class="d-section">
-        <h3>Drives</h3>
-        <ol class="drives">
-          ${drives
-            .slice()
-            .reverse()
-            .slice(0, 12)
-            .map(
-              (d) => `
-            <li>
-              <span class="play-team">${logo(d.team, "xs")}${esc(d.team?.abbreviation || "")}</span>
-              <span class="drive-result">${esc(d.displayResult || d.result || "")}</span>
-              <span class="drive-desc">${esc(d.description || "")}</span>
-            </li>`
-            )
-            .join("")}
-        </ol>
-      </section>`;
+  // ---- team stats ----
+
+  const FOOTBALL_STATS = [
+    ["totalOffensivePlays", "Plays"],
+    ["totalYards", "Yards"],
+    ["yardsPerPlay", "Yards per Play"],
+    ["netPassingYards", "Passing Yards"],
+    ["rushingYards", "Rushing Yards"],
+    ["firstDowns", "1st Downs"],
+    ["thirdDownEff", "3rd Down"],
+    ["turnovers", "Turnovers"],
+    ["totalPenaltiesYards", "Penalties"],
+    ["possessionTime", "Possession"],
+  ];
+
+  // A number to size the bars by: "21:40" -> seconds, "5-9" -> 5, "47.5" -> 47.5.
+  function statNumber(v) {
+    const s = String(v ?? "");
+    const t = /^(\d+):(\d{2})$/.exec(s);
+    if (t) return Number(t[1]) * 60 + Number(t[2]);
+    const m = /\d+(?:\.\d+)?/.exec(s);
+    return m ? parseFloat(m[0]) : null;
   }
 
-  function playsSection(summary, league) {
-    const plays = (summary.plays || []).filter((p) => p.text);
-    if (!plays.length) return "";
-    const teamsById = {};
-    for (const t of summary.boxscore?.teams || []) if (t.team) teamsById[t.team.id] = t.team;
-    return `
-      <section class="d-section">
-        <h3>Latest plays</h3>
-        <ol class="plays recent">
-          ${plays
-            .slice(-15)
-            .reverse()
-            .map((p) => {
-              const team = p.team?.id ? teamsById[p.team.id] : null;
-              return `
-            <li${p.scoringPlay ? ' class="scoring"' : ""}>
-              <span class="play-when">${esc(periodLabel(p, league))} ${league.sport === "baseball" ? "" : esc(p.clock?.displayValue || "")}</span>
-              <span class="play-team">${team ? `${logo(team, "xs")}${esc(team.abbreviation || "")}` : ""}</span>
-              <span class="play-score">${p.awayScore != null ? `${esc(p.awayScore)}–${esc(p.homeScore)}` : ""}</span>
-              <span class="play-text">${esc(p.text)}</span>
-            </li>`;
-            })
-            .join("")}
-        </ol>
-      </section>`;
+  function teamStatsCard(summary, league) {
+    const teams = summary?.boxscore?.teams;
+    if (!Array.isArray(teams) || teams.length !== 2) return "";
+    const byName = (t) => Object.fromEntries((t.statistics || []).filter((s) => s.displayValue != null).map((s) => [s.name, s]));
+    // Box score lists teams away first, but don't rely on it.
+    const awayId = sides(state.openGame?.event?.competitions?.[0]).away?.team?.id;
+    const ordered = String(teams[1].team?.id) === String(awayId) ? [teams[1], teams[0]] : teams;
+    const [a, b] = ordered.map(byName);
+    const list =
+      league.sport === "football"
+        ? FOOTBALL_STATS.filter(([n]) => a[n] || b[n])
+        : Object.keys(a)
+            .filter((n) => b[n])
+            .slice(0, 10)
+            .map((n) => [n, a[n].label || n]);
+    if (!list.length) return "";
+    const rows = list
+      .map(([n, label]) => {
+        const av = a[n]?.displayValue ?? "–";
+        const bv = b[n]?.displayValue ?? "–";
+        const an = statNumber(av);
+        const bn = statNumber(bv);
+        const bars =
+          an != null && bn != null
+            ? `<div class="sbar-track"><i class="away" style="flex-grow:${an + bn ? an : 1}"></i><i class="home" style="flex-grow:${an + bn ? bn : 1}"></i></div>`
+            : "";
+        return `<div class="sbar"><div class="sbar-top"><span class="sv">${esc(av)}</span><span class="sl">${esc(label)}</span><span class="sv">${esc(bv)}</span></div>${bars}</div>`;
+      })
+      .join("");
+    return gcard("Team Stats", `<div class="sbar-head"><span>${esc(ordered[0].team?.abbreviation)}</span><span>${esc(ordered[1].team?.abbreviation)}</span></div>${rows}`);
   }
 
-  function leadersSection(summary, comp) {
-    const groups = (summary.leaders || []).filter((g) => g.leaders?.length);
+  // ---- leaders ----
+
+  function leadersCard(summary, ev) {
+    const comp = ev.competitions?.[0] || {};
+    const groups = (summary?.leaders || []).filter((g) => g.leaders?.length);
     if (groups.length === 2) {
       const cats = groups[0].leaders.slice(0, 3);
       const rows = cats
@@ -1204,78 +1292,155 @@
           return `<div class="leader-row"><span class="leader-cat">${esc(cat.shortDisplayName || cat.displayName || cat.name)}</span>${cells.join("")}</div>`;
         })
         .join("");
-      return `
-        <section class="d-section">
-          <h3>Leaders</h3>
-          <div class="leader-row head"><span></span>${groups.map((g) => `<span>${esc(g.team?.abbreviation)}</span>`).join("")}</div>
-          ${rows}
-        </section>`;
+      return gcard("Leaders", `<div class="leader-row head"><span></span>${groups.map((g) => `<span>${esc(g.team?.abbreviation)}</span>`).join("")}</div>${rows}`);
     }
     const flat = comp.leaders;
     if (Array.isArray(flat) && flat.length) {
-      return `
-        <section class="d-section">
-          <h3>Leaders</h3>
-          ${flat
-            .map((cat) => {
-              const l = cat.leaders?.[0];
-              if (!l) return "";
-              return `<div class="leader-row flat"><span class="leader-cat">${esc(cat.shortDisplayName || cat.displayName)}</span><div class="leader"><span class="leader-name">${esc(l.athlete?.shortName || l.athlete?.displayName)}</span><span class="leader-line">${esc(l.displayValue)}</span></div></div>`;
-            })
-            .join("")}
-        </section>`;
+      return gcard(
+        "Leaders",
+        flat
+          .map((cat) => {
+            const l = cat.leaders?.[0];
+            if (!l) return "";
+            return `<div class="leader-row flat"><span class="leader-cat">${esc(cat.shortDisplayName || cat.displayName)}</span><div class="leader"><span class="leader-name">${esc(l.athlete?.shortName || l.athlete?.displayName)}</span><span class="leader-line">${esc(l.displayValue)}</span></div></div>`;
+          })
+          .join("")
+      );
     }
     return "";
   }
 
-  function teamStats(summary, league) {
-    const teams = summary.boxscore?.teams;
-    if (!Array.isArray(teams) || teams.length !== 2) return "";
-    const byName = (t) => Object.fromEntries((t.statistics || []).filter((s) => s.displayValue != null).map((s) => [s.name, s]));
-    const [a, b] = teams.map(byName);
-    let names;
-    if (league.sport === "football") {
-      names = ["totalYards", "netPassingYards", "rushingYards", "firstDowns", "thirdDownEff", "turnovers", "totalPenaltiesYards", "possessionTime"];
-    } else {
-      names = Object.keys(a).filter((n) => b[n]).slice(0, 10);
-    }
-    const rows = names
-      .filter((n) => a[n] || b[n])
-      .map(
-        (n) => `
-        <tr>
-          <td>${esc(a[n]?.displayValue ?? "–")}</td>
-          <th scope="row">${esc(a[n]?.label || b[n]?.label || n)}</th>
-          <td>${esc(b[n]?.displayValue ?? "–")}</td>
-        </tr>`
-      )
-      .join("");
-    if (!rows) return "";
-    return `
-      <section class="d-section">
-        <h3>Team stats</h3>
-        <table class="team-stats">
-          <thead><tr><th>${esc(teams[0].team?.abbreviation)}</th><th></th><th>${esc(teams[1].team?.abbreviation)}</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </section>`;
-  }
-
-  function infoSection(ev, comp) {
-    const odds = comp.odds?.[0];
+  function infoCard(ev) {
+    const comp = ev.competitions?.[0] || {};
     const info = [
       ["Start", startText(ev, true)],
       ["Venue", [comp.venue?.fullName, comp.venue?.address?.city, comp.venue?.address?.state].filter(Boolean).join(", ")],
       ["TV", broadcasts(comp)],
-      ["Line", odds?.details],
-      ["Over/Under", odds?.overUnder],
     ].filter(([, v]) => v);
     if (!info.length) return "";
-    return `
-      <section class="d-section">
-        <h3>Game info</h3>
-        <dl class="info">${info.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
-      </section>`;
+    return gcard("Game Info", `<dl class="info">${info.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`);
+  }
+
+  // ---- plays ----
+
+  function periodLabel(p, league) {
+    if (p?.period?.displayValue && league.sport === "baseball") return p.period.displayValue;
+    const n = p?.period?.number;
+    if (!n) return "";
+    const prefix = league.sport === "hockey" ? "P" : "Q";
+    const reg = league.sport === "hockey" ? 3 : 4;
+    return n > reg ? "OT" : `${prefix}${n}`;
+  }
+
+  function scoringCard(summary, league) {
+    const plays = summary.scoringPlays || [];
+    if (!plays.length) return "";
+    return gcard(
+      "Scoring",
+      `<ol class="plays">
+        ${plays
+          .map(
+            (p) => `
+          <li>
+            <span class="play-when">${esc(periodLabel(p, league))} ${esc(p.clock?.displayValue || "")}</span>
+            <span class="play-team">${logo(p.team, "xs")}${esc(p.team?.abbreviation || "")}</span>
+            <span class="play-score">${esc(p.awayScore)}–${esc(p.homeScore)}</span>
+            <span class="play-text">${esc(p.text)}</span>
+          </li>`
+          )
+          .join("")}
+      </ol>`
+    );
+  }
+
+  function drivesCard(summary) {
+    const current = summary.drives?.current;
+    const drives = [...(summary.drives?.previous || [])];
+    if (current && !drives.some((d) => d.id && d.id === current.id)) drives.push({ ...current, inProgress: true });
+    if (!drives.length) return "";
+    return gcard(
+      "Drives",
+      `<ol class="drives">
+        ${drives
+          .reverse()
+          .map(
+            (d) => `
+          <li${d.inProgress ? ' class="current"' : ""}>
+            <span class="play-team">${logo(d.team, "xs")}${esc(d.team?.abbreviation || "")}</span>
+            <span class="drive-result">${esc(d.inProgress ? "In progress" : d.displayResult || d.result || "")}</span>
+            <span class="drive-desc">${esc(d.description || "")}</span>
+          </li>`
+          )
+          .join("")}
+      </ol>`
+    );
+  }
+
+  function playsCard(summary, league) {
+    const plays = (summary.plays || []).filter((p) => p.text);
+    if (!plays.length) return "";
+    const teamsById = {};
+    for (const t of summary.boxscore?.teams || []) if (t.team) teamsById[t.team.id] = t.team;
+    return gcard(
+      "Latest Plays",
+      `<ol class="plays recent">
+        ${plays
+          .slice(-25)
+          .reverse()
+          .map((p) => {
+            const team = p.team?.id ? teamsById[p.team.id] : null;
+            return `
+          <li${p.scoringPlay ? ' class="scoring"' : ""}>
+            <span class="play-when">${esc(periodLabel(p, league))} ${league.sport === "baseball" ? "" : esc(p.clock?.displayValue || "")}</span>
+            <span class="play-team">${team ? `${logo(team, "xs")}${esc(team.abbreviation || "")}` : ""}</span>
+            <span class="play-score">${p.awayScore != null ? `${esc(p.awayScore)}–${esc(p.homeScore)}` : ""}</span>
+            <span class="play-text">${esc(p.text)}</span>
+          </li>`;
+          })
+          .join("")}
+      </ol>`
+    );
+  }
+
+  // ---- standings ----
+
+  const STANDING_COLS = [
+    ["wins", "W"],
+    ["losses", "L"],
+    ["ties", "T"],
+    ["otLosses", "OTL"],
+    ["winPercent", "PCT"],
+    ["gamesBehind", "GB"],
+  ];
+
+  function standingsCard(summary, ev) {
+    const groups = (summary?.standings?.groups || []).filter((g) => g.standings?.entries?.length);
+    if (!groups.length) return "";
+    const comp = ev.competitions?.[0] || {};
+    const ids = new Set((comp.competitors || []).map((c) => String(c.team?.id)));
+    const names = new Set((comp.competitors || []).map((c) => c.team?.displayName));
+    return groups
+      .map((g) => {
+        const entries = g.standings.entries;
+        const statsOf = (e) => Object.fromEntries((e.stats || []).map((s) => [s.name || s.type, s.displayValue ?? s.value]));
+        const cols = STANDING_COLS.filter(([n]) => entries.some((e) => statsOf(e)[n] != null && !(n === "ties" && entries.every((x) => Number(statsOf(x).ties) === 0))));
+        const rows = entries
+          .map((e) => {
+            const name = typeof e.team === "string" ? e.team : e.team?.displayName || e.team?.name || "";
+            const mine = ids.has(String(e.id ?? e.team?.id)) || names.has(name);
+            const s = statsOf(e);
+            const lg = e.logo?.[0]?.href || e.team?.logos?.[0]?.href;
+            return `<tr${mine ? ' class="mine"' : ""}><th scope="row">${lg ? `<img class="logo logo-xs" src="${esc(lg)}" alt="" loading="lazy" />` : ""}${esc(name)}</th>${cols
+              .map(([n]) => `<td>${esc(s[n] ?? "")}</td>`)
+              .join("")}</tr>`;
+          })
+          .join("");
+        return gcard(
+          g.header || g.name || "Standings",
+          `<div class="table-scroll"><table class="standings"><thead><tr><th></th>${cols.map(([, l]) => `<th>${l}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`
+        );
+      })
+      .join("");
   }
 
   // ---------- team picker ----------
@@ -1433,6 +1598,12 @@
   });
 
   detailEl.addEventListener("click", (e) => {
+    const tab = e.target.closest("[data-tab]");
+    if (tab) {
+      state.detailTab = tab.dataset.tab;
+      renderDetail();
+      return;
+    }
     const btn = e.target.closest("[data-follow]");
     if (!btn) return;
     toggleFavorite(btn.dataset.follow, teamInfoFromEvent(btn.dataset.follow));
@@ -1444,6 +1615,35 @@
   $("teams-btn").addEventListener("click", () => openTeams());
   $("close-teams").addEventListener("click", () => teamsDialog.close());
   $("close-game").addEventListener("click", () => gameDialog.close());
+  $("prev-game").addEventListener("click", () => stepGame(-1));
+  $("next-game").addEventListener("click", () => stepGame(1));
+
+  // Swipe sideways between games, like flipping through cards.
+  let touch = null;
+  detailEl.addEventListener(
+    "touchstart",
+    (e) => {
+      const t = e.touches[0];
+      touch = e.target.closest(".table-scroll, .gd-tabs") ? null : { x: t.clientX, y: t.clientY };
+    },
+    { passive: true }
+  );
+  detailEl.addEventListener(
+    "touchend",
+    (e) => {
+      if (!touch) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - touch.x;
+      const dy = t.clientY - touch.y;
+      touch = null;
+      if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) stepGame(dx < 0 ? 1 : -1);
+    },
+    { passive: true }
+  );
+  gameDialog.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight") stepGame(1);
+    if (e.key === "ArrowLeft") stepGame(-1);
+  });
 
   pickerNavEl.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-picker]");
