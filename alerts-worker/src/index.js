@@ -65,6 +65,7 @@ async function route(request, env) {
   if (request.method === "GET" && url.pathname.startsWith("/espn/")) return proxyEspn(url);
   if (request.method === "GET" && /^\/(nhl|nba)\//.test(url.pathname)) return proxyLeague(url);
   if (request.method === "GET" && url.pathname === "/videos") return videos(env, url.searchParams.get("league"));
+  if (request.method === "GET" && url.pathname === "/logo") return logoImage(url.searchParams.get("src"));
   if (request.method !== "POST") return json({ error: "Not found" }, 404);
 
   const body = await request.json();
@@ -125,6 +126,7 @@ const ESPN_FEEDS = [
   { re: /^\/apis\/v2\/sports\/[a-z-]+\/[a-z-]+\/standings$/, ttl: 300 },
   { re: /^\/apis\/site\/v2\/sports\/[a-z-]+\/[a-z-]+\/(news|rankings)$/, ttl: 300 },
   { re: /^\/apis\/site\/v2\/sports\/[a-z-]+\/[a-z-]+\/teams$/, ttl: 3600 },
+  { re: /^\/apis\/site\/v2\/sports\/[a-z-]+\/[a-z-]+\/teams\/\d+(\/schedule|\/roster)?$/, ttl: 600 },
 ];
 
 async function proxyEspn(url) {
@@ -163,6 +165,25 @@ async function proxyLeague(url) {
   return new Response(res.body, {
     status: res.status,
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Data-Age": res.headers.get("age") || "0" },
+  });
+}
+
+// ---------- team logos ----------
+
+// ESPN's logo images don't allow other sites to draw them into a picture, so
+// the app's share cards fetch them through here.
+async function logoImage(src) {
+  let u;
+  try {
+    u = new URL(src || "");
+  } catch {
+    return json({ error: "Bad logo address" }, 400);
+  }
+  if (u.protocol !== "https:" || !/(^|\.)espncdn\.com$/.test(u.hostname)) return json({ error: "Not an ESPN logo" }, 404);
+  const res = await fetch(u.href);
+  return new Response(res.body, {
+    status: res.status,
+    headers: { "Content-Type": res.headers.get("content-type") || "image/png", "Cache-Control": "public, max-age=86400" },
   });
 }
 
