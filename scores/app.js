@@ -1,0 +1,1298 @@
+(() => {
+  "use strict";
+
+  const API = "https://site.api.espn.com/apis/site/v2/sports";
+
+  const LEAGUES = [
+    { key: "nfl", name: "NFL", sport: "football", path: "football/nfl", mode: "week" },
+    { key: "cfb", name: "College Football", short: "CFB", sport: "football", path: "football/college-football", mode: "week", params: { groups: "80" } },
+    { key: "nba", name: "NBA", sport: "basketball", path: "basketball/nba", mode: "day" },
+    { key: "wnba", name: "WNBA", sport: "basketball", path: "basketball/wnba", mode: "day" },
+    { key: "mlb", name: "MLB", sport: "baseball", path: "baseball/mlb", mode: "day" },
+    { key: "nhl", name: "NHL", sport: "hockey", path: "hockey/nhl", mode: "day" },
+  ];
+  const byKey = Object.fromEntries(LEAGUES.map((l) => [l.key, l]));
+  const shortName = (l) => l.short || l.name;
+
+  const FAV_KEY = "scoreline.favorites";
+
+  // Refresh cadence: fast while games are live, slower near start time, lazy otherwise.
+  const REFRESH_LIVE = 10 * 1000;
+  const REFRESH_SOON = 60 * 1000;
+  const REFRESH_IDLE = 5 * 60 * 1000;
+  // A followed team's "next game" (when it isn't on today's board) changes rarely.
+  const NEXT_TTL = 15 * 60 * 1000;
+
+  const demoMode = new URLSearchParams(location.search).has("demo");
+
+  const $ = (id) => document.getElementById(id);
+  const gamesEl = $("games");
+  const emptyEl = $("empty-state");
+  const statusEl = $("status-line");
+  const liveEl = $("live-indicator");
+  const titleEl = $("view-title");
+  const navEl = $("league-nav");
+  const toolbarEl = $("toolbar");
+  const gameDialog = $("game-dialog");
+  const detailEl = $("game-detail");
+  const teamsDialog = $("teams-dialog");
+  const teamListEl = $("team-list");
+  const searchEl = $("team-search");
+  const pickerNavEl = $("picker-leagues");
+  const installBtn = $("install-btn");
+
+  const state = {
+    view: "home",
+    leagues: {}, // key -> { cursor, events, weeks, days, lastUpdated, error }
+    home: { events: [], lastUpdated: null, error: null },
+    nexts: new Map(), // favorite key -> { event, at }
+    favorites: loadFavorites(), // favorite key -> team info
+    teams: {}, // league key -> team list for the picker
+    pickerLeague: "nfl",
+    lastScores: new Map(),
+    clocks: new Map(),
+    openGame: null, // { key, event, summary }
+    seq: 0,
+    timer: null,
+    clockTimer: null,
+  };
+
+  // ---------- storage ----------
+
+  function loadFavorites() {
+    try {
+      const list = JSON.parse(localStorage.getItem(FAV_KEY)) || [];
+      return new Map(list.map((f) => [f.key, f]));
+    } catch {
+      return new Map();
+    }
+  }
+
+  function saveFavorites() {
+    try {
+      localStorage.setItem(FAV_KEY, JSON.stringify([...state.favorites.values()]));
+    } catch {
+      /* storage unavailable; follows last for this visit only */
+    }
+  }
+
+  // ---------- dates ----------
+
+  const pad = (n) => String(n).padStart(2, "0");
+  const ymd = (d) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+  const parseYmd = (s) => new Date(Number(s.slice(0, 4)), Number(s.slice(4, 6)) - 1, Number(s.slice(6, 8)));
+  const today = () => ymd(new Date());
+
+  function addDays(s, n) {
+    const d = parseYmd(s);
+    d.setDate(d.getDate() + n);
+    return ymd(d);
+  }
+
+  function dayLabel(s) {
+    const t = today();
+    if (s === t) return "Today";
+    if (s === addDays(t, -1)) return "Yesterday";
+    if (s === addDays(t, 1)) return "Tomorrow";
+    return parseYmd(s).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  }
+
+  function startText(ev, long = false) {
+    const d = new Date(ev.date);
+    const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    const sameDay = ymd(d) === today();
+    const day = sameDay && !long ? "" : d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    if (ev.timeValid === false) return day || "Today";
+    return [day, time].filter(Boolean).join(" · ");
+  }
+
+  // ---------- data ----------
+
+  async function fetchJSON(url) {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+
+  const leagueState = (key) =>
+    (state.leagues[key] ||= { cursor: null, events: [], weeks: [], days: [], lastUpdated: null, error: null });
+
+  function scoreboardURL(league, cursor) {
+    const params = new URLSearchParams(league.params || {});
+    params.set("limit", "300");
+    if (league.mode === "day") {
+      params.set("dates", cursor?.date || today());
+    } else if (cursor) {
+      params.set("seasontype", cursor.seasonType);
+      params.set("week", cursor.week);
+      if (cursor.season) params.set("dates", cursor.season);
+    }
+    return `${API}/${league.path}/scoreboard?${params}`;
+  }
+
+  async function fetchScoreboard(key, cursor) {
+    const league = byKey[key];
+    const data = demoMode ? window.SCORES_DEMO.scoreboard(key, cursor) : await fetchJSON(scoreboardURL(league, cursor));
+    for (const ev of data.events || []) tagEvent(ev, key);
+    return data;
+  }
+
+  async function fetchSummary(key, id) {
+    if (demoMode) return window.SCORES_DEMO.summary(key, id);
+    return fetchJSON(`${API}/${byKey[key].path}/summary?event=${encodeURIComponent(id)}`);
+  }
+
+  async function fetchTeams(key) {
+    const league = byKey[key];
+    let data;
+    if (demoMode) data = window.SCORES_DEMO.teams(key);
+    else {
+      const params = new URLSearchParams(league.params || {});
+      params.set("limit", "1000");
+      data = await fetchJSON(`${API}/${league.path}/teams?${params}`);
+    }
+    const list = data.sports?.[0]?.leagues?.[0]?.teams || [];
+    return list
+      .map(({ team }) => ({
+        key: `${key}:${team.id}`,
+        league: key,
+        id: String(team.id),
+        abbr: team.abbreviation,
+        name: team.displayName,
+        short: team.shortDisplayName || team.name || team.displayName,
+        logo: team.logos?.[0]?.href || team.logo || "",
+        color: team.color || "",
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async function fetchTeamNext(fav) {
+    const data = demoMode
+      ? window.SCORES_DEMO.team(fav.league, fav.id)
+      : await fetchJSON(`${API}/${byKey[fav.league].path}/teams/${encodeURIComponent(fav.id)}`);
+    const ev = data.team?.nextEvent?.[0];
+    if (!ev) return null;
+    normalizeEvent(ev);
+    tagEvent(ev, fav.league);
+    return ev;
+  }
+
+  // Team endpoints shape events a little differently from the scoreboard; bring them in line.
+  function normalizeEvent(ev) {
+    const comp = ev.competitions?.[0];
+    if (!comp) return;
+    if (!ev.status && comp.status) ev.status = comp.status;
+    for (const c of comp.competitors || []) {
+      if (c.score && typeof c.score === "object") c.score = c.score.displayValue ?? String(c.score.value ?? "");
+      if (c.team && !c.team.logo && c.team.logos?.[0]) c.team.logo = c.team.logos[0].href;
+      if (!c.records && Array.isArray(c.record)) c.records = c.record;
+    }
+  }
+
+  function tagEvent(ev, key) {
+    ev._league = key;
+    ev._key = `${key}:${ev.id}`;
+    // Fill missing colors/logos from what we know about followed teams.
+    for (const c of ev.competitions?.[0]?.competitors || []) {
+      const fav = c.team && state.favorites.get(`${key}:${c.team.id}`);
+      if (!fav) continue;
+      c.team.color ||= fav.color;
+      c.team.logo ||= fav.logo;
+    }
+  }
+
+  function applyLeague(key, data) {
+    const ls = leagueState(key);
+    const league = byKey[key];
+    ls.events = data.events || [];
+    ls.error = null;
+    ls.lastUpdated = new Date();
+    const calendar = data.leagues?.[0]?.calendar;
+
+    if (league.mode === "week") {
+      ls.cursor = {
+        season: data.season?.year ?? ls.cursor?.season,
+        seasonType: data.season?.type ?? ls.cursor?.seasonType,
+        week: data.week?.number ?? ls.cursor?.week,
+      };
+      if (Array.isArray(calendar) && calendar.length && typeof calendar[0] === "object") {
+        ls.weeks = [];
+        for (const type of calendar) {
+          // Season type 4 is the off-season; nothing to show there.
+          if (!Array.isArray(type.entries) || type.value === "4") continue;
+          for (const entry of type.entries) {
+            ls.weeks.push({
+              seasonType: Number(type.value),
+              week: Number(entry.value),
+              label: type.value === "2" ? entry.label : `${type.label}: ${entry.label}`,
+            });
+          }
+        }
+      }
+    } else {
+      ls.cursor ||= { date: today() };
+      if (Array.isArray(calendar) && typeof calendar[0] === "string") {
+        ls.days = calendar.map((s) => s.slice(0, 10).replace(/-/g, "")).sort();
+      }
+    }
+  }
+
+  const teamIds = (ev) => (ev.competitions?.[0]?.competitors || []).map((c) => `${ev._league}:${c.team?.id}`);
+  const isFavGame = (ev) => teamIds(ev).some((k) => state.favorites.has(k));
+
+  async function fetchHome() {
+    const favs = [...state.favorites.values()].filter((f) => byKey[f.league]);
+    const keys = [...new Set(favs.map((f) => f.league))];
+    const boards = await Promise.allSettled(keys.map((k) => fetchScoreboard(k, null)));
+
+    const events = [];
+    let failed = 0;
+    boards.forEach((r) => {
+      if (r.status !== "fulfilled") {
+        failed++;
+        return;
+      }
+      for (const ev of r.value.events || []) if (isFavGame(ev)) events.push(ev);
+    });
+
+    const covered = new Set(events.flatMap(teamIds));
+    const now = Date.now();
+    const need = favs.filter((f) => !covered.has(f.key) && !(state.nexts.get(f.key)?.at > now - NEXT_TTL));
+    const nexts = await Promise.allSettled(need.map(fetchTeamNext));
+
+    if (keys.length && failed === keys.length) throw new Error(boards.find((r) => r.reason)?.reason?.message || "Network error");
+    return {
+      events,
+      covered,
+      nexts: need.map((f, i) => [f.key, nexts[i].status === "fulfilled" ? nexts[i].value : null]),
+    };
+  }
+
+  function applyHome(res) {
+    const now = Date.now();
+    for (const [k, ev] of res.nexts) state.nexts.set(k, { event: ev, at: now });
+    const seen = new Set(res.events.map((e) => e._key));
+    const events = [...res.events];
+    for (const fav of state.favorites.values()) {
+      if (res.covered.has(fav.key)) continue;
+      const ev = state.nexts.get(fav.key)?.event;
+      if (ev && !seen.has(ev._key)) {
+        seen.add(ev._key);
+        events.push(ev);
+      }
+    }
+    state.home = { events, lastUpdated: new Date(), error: null };
+  }
+
+  async function refresh() {
+    clearTimeout(state.timer);
+    const view = state.view;
+    const seq = ++state.seq;
+    let result;
+    let error = null;
+    try {
+      if (view === "home") result = state.favorites.size ? await fetchHome() : null;
+      else result = await fetchScoreboard(view, leagueState(view).cursor);
+    } catch (err) {
+      error = err;
+    }
+    // A newer request (different view, day or week) has started; let it win.
+    if (seq !== state.seq) return;
+
+    if (view === "home") {
+      if (error) state.home.error = error;
+      else if (result) applyHome(result);
+      else state.home = { events: [], lastUpdated: null, error: null };
+    } else if (error) {
+      leagueState(view).error = error;
+    } else {
+      applyLeague(view, result);
+    }
+
+    syncOpenGame();
+    syncClocks();
+    render();
+    if (state.openGame) refreshDetail();
+    schedule();
+  }
+
+  function schedule() {
+    clearTimeout(state.timer);
+    if (document.hidden) return;
+    state.timer = setTimeout(refresh, nextDelay());
+  }
+
+  function nextDelay() {
+    const events = currentEvents();
+    if (currentError()) return REFRESH_SOON;
+    if (state.openGame && gameState(state.openGame.event) === "in") return REFRESH_LIVE;
+    const now = Date.now();
+    let delay = REFRESH_IDLE;
+    for (const ev of events) {
+      const s = gameState(ev);
+      if (s === "in") return REFRESH_LIVE;
+      if (s === "pre" && new Date(ev.date).getTime() - now < 30 * 60 * 1000) delay = REFRESH_SOON;
+    }
+    return delay;
+  }
+
+  const currentEvents = () => (state.view === "home" ? state.home.events : leagueState(state.view).events);
+  const currentError = () => (state.view === "home" ? state.home.error : leagueState(state.view).error);
+
+  // ---------- helpers ----------
+
+  const esc = (v) =>
+    String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+  const gameState = (ev) => ev?.status?.type?.state || ev?.competitions?.[0]?.status?.type?.state || "pre";
+
+  function sides(comp) {
+    const list = comp?.competitors || [];
+    return {
+      away: list.find((c) => c.homeAway === "away") || list[0],
+      home: list.find((c) => c.homeAway === "home") || list[1],
+    };
+  }
+
+  function teamColor(team) {
+    return /^[0-9a-f]{6}$/i.test(team?.color || "") ? `#${team.color}` : "#3a3a3c";
+  }
+
+  function logo(team, size = "md") {
+    const blank = `<span class="logo logo-${size} logo-blank" style="--team:${teamColor(team)}"></span>`;
+    if (!team?.logo) return blank;
+    // If the logo can't load, swap in a team-colored dot rather than a broken image.
+    return `<img class="logo logo-${size}" src="${esc(team.logo)}" alt="" loading="lazy" onerror="this.outerHTML=this.dataset.fallback" data-fallback="${esc(blank)}" />`;
+  }
+
+  const recordText = (c) => c?.records?.[0]?.summary || c?.records?.[0]?.displayValue || "";
+  const rank = (c) => {
+    const r = c?.curatedRank?.current;
+    return r && r <= 25 ? r : null;
+  };
+  const broadcasts = (comp) => [...new Set((comp.broadcasts || []).flatMap((b) => b.names || []))].join(", ");
+  const note = (comp) => comp.notes?.[0]?.headline || comp.series?.summary || "";
+
+  function sortEvents(events) {
+    const order = { in: 0, pre: 1, post: 2 };
+    return events.slice().sort((a, b) => {
+      const st = order[gameState(a)] - order[gameState(b)];
+      if (st) return st;
+      if (state.view !== "home") {
+        const fav = Number(isFavGame(b)) - Number(isFavGame(a));
+        if (fav) return fav;
+      }
+      const t = new Date(a.date) - new Date(b.date);
+      return gameState(a) === "post" ? -t : t;
+    });
+  }
+
+  // ---------- game clock ----------
+
+  // The feed only gives a snapshot of the clock, so between refreshes we run it
+  // down locally. A clock counts as running when it moved since the last
+  // refresh in the same period; otherwise (timeout, foul, review) it stays put
+  // until the feed shows it moving again.
+  function syncClocks() {
+    const now = Date.now();
+    const events = [...currentEvents()];
+    if (state.openGame) events.push(state.openGame.event);
+    for (const ev of events) {
+      if (gameState(ev) !== "in") continue;
+      const m = /^(\d{1,2}):(\d{2})$/.exec(ev.status?.displayClock || "");
+      if (!m) {
+        state.clocks.delete(ev._key);
+        continue;
+      }
+      const seconds = Number(m[1]) * 60 + Number(m[2]);
+      const period = ev.status?.period;
+      const prev = state.clocks.get(ev._key);
+      // Two reads a moment apart (scoreboard, then game summary) can't tell a
+      // stopped clock from a running one; keep the earlier verdict.
+      if (prev && prev.period === period && now - prev.syncedAt < 5000) {
+        if (seconds !== prev.seconds) {
+          state.clocks.set(ev._key, { ...prev, seconds, syncedAt: now, running: prev.running || seconds < prev.seconds });
+        }
+        continue;
+      }
+      const running = !!prev && prev.period === period && seconds > 0 && seconds < prev.seconds;
+      state.clocks.set(ev._key, { seconds, period, running, syncedAt: now });
+    }
+    const anyRunning = [...state.clocks.values()].some((c) => c.running);
+    if (anyRunning && !state.clockTimer) state.clockTimer = setInterval(tickClocks, 250);
+    if (!anyRunning && state.clockTimer) {
+      clearInterval(state.clockTimer);
+      state.clockTimer = null;
+    }
+  }
+
+  function clockSeconds(key) {
+    const c = state.clocks.get(key);
+    if (!c) return null;
+    if (!c.running) return c.seconds;
+    // Don't run past the next expected refresh; if the feed stalls, the clock stops too.
+    const elapsed = Math.min((Date.now() - c.syncedAt) / 1000, REFRESH_LIVE / 1000 + 5);
+    return Math.max(0, Math.ceil(c.seconds - elapsed));
+  }
+
+  const formatClock = (secs) => `${Math.floor(secs / 60)}:${pad(secs % 60)}`;
+
+  function tickClocks() {
+    document.querySelectorAll("[data-clock]").forEach((el) => {
+      const secs = clockSeconds(el.dataset.clock);
+      if (secs == null) return;
+      const text = formatClock(secs);
+      if (el.textContent !== text) el.textContent = text;
+    });
+  }
+
+  // Status like "7:42 - 3rd" with the clock split out so it can run.
+  function statusHTML(ev, long = false) {
+    const st = gameState(ev);
+    if (st === "pre") return esc(startText(ev, long));
+    const type = ev.status?.type || {};
+    const detail = (long ? type.detail : type.shortDetail) || type.detail || type.shortDetail || "";
+    const display = ev.status?.displayClock || "";
+    const secs = st === "in" ? clockSeconds(ev._key) : null;
+    if (secs != null && display && detail.startsWith(display)) {
+      const rest = detail.slice(display.length).replace(/^\s*-\s*/, "");
+      const running = state.clocks.get(ev._key)?.running;
+      return `<span class="clock${running ? "" : " stopped"}" data-clock="${esc(ev._key)}">${formatClock(secs)}</span> <span>${esc(rest)}</span>`;
+    }
+    return esc(detail);
+  }
+
+  // ---------- rendering: shell ----------
+
+  function render() {
+    renderNav();
+    renderToolbar();
+
+    const events = sortEvents(currentEvents());
+    liveEl.hidden = !events.some((ev) => gameState(ev) === "in");
+    titleEl.textContent = state.view === "home" ? "My Teams" : byKey[state.view].name;
+
+    gamesEl.innerHTML = events.map(card).join("");
+    renderEmpty(events);
+    renderStatus();
+
+    // Remember scores so the next refresh can flash the cards that changed.
+    for (const ev of events) {
+      const { away, home } = sides(ev.competitions?.[0]);
+      state.lastScores.set(ev._key, `${away?.score}-${home?.score}`);
+    }
+  }
+
+  function renderNav() {
+    const items = [{ key: "home", label: "★ My Teams" }, ...LEAGUES.map((l) => ({ key: l.key, label: shortName(l) }))];
+    navEl.innerHTML = items
+      .map(
+        (i) =>
+          `<button class="chip${i.key === state.view ? " active" : ""}" data-view="${i.key}" aria-current="${i.key === state.view}">${esc(i.label)}</button>`
+      )
+      .join("");
+  }
+
+  function renderToolbar() {
+    if (state.view === "home") {
+      toolbarEl.hidden = true;
+      return;
+    }
+    toolbarEl.hidden = false;
+    const league = byKey[state.view];
+    const ls = leagueState(state.view);
+
+    if (league.mode === "day") {
+      const date = ls.cursor?.date || today();
+      toolbarEl.innerHTML = `
+        <button class="icon-btn" data-step="-1" aria-label="Previous day">&#8249;</button>
+        <button class="day-label" data-today>${esc(dayLabel(date))}</button>
+        <button class="icon-btn" data-step="1" aria-label="Next day">&#8250;</button>`;
+      return;
+    }
+
+    const current = ls.cursor ? `${ls.cursor.seasonType}-${ls.cursor.week}` : "";
+    let weeks = ls.weeks;
+    if (!weeks.length && ls.cursor?.week != null) weeks = [{ seasonType: ls.cursor.seasonType, week: ls.cursor.week, label: `Week ${ls.cursor.week}` }];
+    const idx = weeks.findIndex((w) => `${w.seasonType}-${w.week}` === current);
+    toolbarEl.innerHTML = `
+      <button class="icon-btn" data-step="-1" aria-label="Previous week"${idx <= 0 ? " disabled" : ""}>&#8249;</button>
+      <select id="week-select" aria-label="Week">
+        ${weeks
+          .map((w, i) => `<option value="${i}"${`${w.seasonType}-${w.week}` === current ? " selected" : ""}>${esc(w.label)}</option>`)
+          .join("")}
+      </select>
+      <button class="icon-btn" data-step="1" aria-label="Next week"${idx < 0 || idx >= weeks.length - 1 ? " disabled" : ""}>&#8250;</button>`;
+  }
+
+  function renderEmpty(events) {
+    if (events.length) {
+      emptyEl.hidden = true;
+      emptyEl.innerHTML = "";
+      return;
+    }
+    emptyEl.hidden = false;
+    const error = currentError();
+    if (state.view === "home" && !state.favorites.size) {
+      emptyEl.innerHTML = `
+        <p class="empty-title">Follow your teams</p>
+        <p>Their live games, results and next games will show up here.</p>
+        <button class="primary-btn" data-open-teams>Choose teams</button>`;
+      return;
+    }
+    if (error) {
+      emptyEl.innerHTML = `<p>Couldn't load games (${esc(error.message)}). Retrying shortly.</p><p><a href="?demo">View demo data</a></p>`;
+      return;
+    }
+    if (state.view === "home") {
+      emptyEl.innerHTML = state.home.lastUpdated
+        ? "<p>No games scheduled for your teams.</p>"
+        : '<p class="loading">Loading…</p>';
+      return;
+    }
+    const league = byKey[state.view];
+    const ls = leagueState(state.view);
+    if (!ls.lastUpdated) {
+      emptyEl.innerHTML = '<p class="loading">Loading…</p>';
+      return;
+    }
+    if (league.mode === "day") {
+      const date = ls.cursor?.date || today();
+      const next = ls.days.find((d) => d > date);
+      emptyEl.innerHTML = `<p>No ${esc(league.name)} games ${dayLabel(date) === "Today" ? "today" : `on ${esc(dayLabel(date))}`}.</p>${
+        next ? `<button class="primary-btn" data-goto-day="${next}">Next games: ${esc(dayLabel(next))}</button>` : ""
+      }`;
+    } else {
+      emptyEl.innerHTML = "<p>No games this week.</p>";
+    }
+  }
+
+  function renderStatus() {
+    const parts = [];
+    if (demoMode) parts.push("Demo data");
+    const updated = state.view === "home" ? state.home.lastUpdated : leagueState(state.view).lastUpdated;
+    const error = currentError();
+    if (error && currentEvents().length) parts.push(`Update failed (${error.message}), retrying`);
+    if (updated) parts.push(`Updated ${updated.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" })}`);
+    statusEl.textContent = parts.join(" · ");
+  }
+
+  // ---------- rendering: cards ----------
+
+  function card(ev) {
+    const league = byKey[ev._league];
+    const comp = ev.competitions?.[0] || {};
+    const { away, home } = sides(comp);
+    const st = gameState(ev);
+    const sit = comp.situation || {};
+    const changed = state.lastScores.has(ev._key) && state.lastScores.get(ev._key) !== `${away?.score}-${home?.score}`;
+    const tv = broadcasts(comp);
+    const headline = note(comp);
+
+    const label = [state.view === "home" ? shortName(league) : "", headline].filter(Boolean).join(" · ");
+
+    return `
+      <article class="card state-${st}${changed ? " scored" : ""}" data-key="${esc(ev._key)}" tabindex="0"
+        aria-label="${esc(ev.name || ev.shortName)}" style="--away:${teamColor(away?.team)};--home:${teamColor(home?.team)}">
+        ${label ? `<div class="card-label">${esc(label)}</div>` : ""}
+        <div class="matchup">
+          ${side(away, comp, league, st, sit)}
+          ${scoreCell(away, comp, league, st, sit)}
+          <div class="mid">
+            <span class="status${st === "in" ? " live" : ""}">${statusHTML(ev)}</span>
+            ${tv && st !== "post" ? `<span class="tv">${esc(tv)}</span>` : ""}
+          </div>
+          ${scoreCell(home, comp, league, st, sit)}
+          ${side(home, comp, league, st, sit)}
+        </div>
+        ${cardExtra(league, comp, st, sit, away, home)}
+      </article>`;
+  }
+
+  function side(c, comp, league, st) {
+    const team = c?.team || {};
+    const r = rank(c);
+    const lost = st === "post" && comp.competitors?.some((o) => o !== c && o.winner);
+    return `
+      <div class="side${lost ? " lost" : ""}">
+        ${logo(team)}
+        <span class="abbr">${r ? `<span class="rank">${r}</span>` : ""}${esc(team.abbreviation || team.shortDisplayName || "")}</span>
+        <span class="rec">${esc(recordText(c))}</span>
+      </div>`;
+  }
+
+  function scoreCell(c, comp, league, st, sit) {
+    if (st === "pre" || !c) return '<span class="score"></span>';
+    const lost = st === "post" && comp.competitors?.some((o) => o !== c && o.winner);
+    const ball = league.sport === "football" && st === "in" && sit.possession && String(sit.possession) === String(c.team?.id);
+    return `<span class="score${lost ? " lost" : ""}${c.homeAway === "home" ? " home" : " away"}">${
+      ball ? '<span class="ball-dot" title="Has the ball"></span>' : ""
+    }${esc(c.score ?? "")}</span>`;
+  }
+
+  function cardExtra(league, comp, st, sit, away, home) {
+    if (st === "in") {
+      if (league.sport === "football") {
+        const dd = sit.downDistanceText || sit.shortDownDistanceText || "";
+        const last = sit.lastPlay?.text || "";
+        if (!dd && !last) return "";
+        return `<div class="extra">
+          ${dd ? `<div class="situation${sit.isRedZone ? " redzone" : ""}">${esc(dd)}${sit.isRedZone ? ' <span class="rz">Red Zone</span>' : ""}</div>` : ""}
+          ${miniField(sit, away, home)}
+          ${last ? `<div class="last-play">${esc(last)}</div>` : ""}
+        </div>`;
+      }
+      if (league.sport === "baseball") return baseballSituation(sit);
+      const last = sit.lastPlay?.text;
+      return last ? `<div class="extra"><div class="last-play">${esc(last)}</div></div>` : "";
+    }
+    if (st === "pre") {
+      const bits = [];
+      if (league.sport === "baseball") {
+        const p = (c) => c?.probables?.[0]?.athlete?.shortName || c?.probables?.[0]?.athlete?.displayName;
+        if (p(away) || p(home)) bits.push(`${p(away) || "TBD"} vs ${p(home) || "TBD"}`);
+      }
+      const odds = comp.odds?.[0];
+      if (odds?.details) bits.push(odds.details);
+      if (odds?.overUnder) bits.push(`O/U ${odds.overUnder}`);
+      return bits.length ? `<div class="extra"><div class="meta">${esc(bits.join(" · "))}</div></div>` : "";
+    }
+    return "";
+  }
+
+  function baseballSituation(sit, big = false) {
+    const on = (b) => (sit[b] ? " on" : "");
+    const outs = Math.max(0, Math.min(3, Number(sit.outs) || 0));
+    const hasCount = sit.balls != null || sit.strikes != null;
+    const pitcher = sit.pitcher?.athlete?.shortName || sit.pitcher?.athlete?.displayName;
+    const batter = sit.batter?.athlete?.shortName || sit.batter?.athlete?.displayName;
+    const last = sit.lastPlay?.text;
+    if (!hasCount && sit.outs == null && !pitcher && !last) return "";
+    return `<div class="extra${big ? " big" : ""}">
+      <div class="diamond-row">
+        <svg class="diamond" viewBox="0 0 44 30" role="img" aria-label="Runners: ${["onFirst", "onSecond", "onThird"].filter((b) => sit[b]).map((b) => b.slice(2)).join(", ") || "none"}">
+          <rect class="base${on("onSecond")}" x="17" y="2" width="10" height="10" transform="rotate(45 22 7)" />
+          <rect class="base${on("onFirst")}" x="29" y="14" width="10" height="10" transform="rotate(45 34 19)" />
+          <rect class="base${on("onThird")}" x="5" y="14" width="10" height="10" transform="rotate(45 10 19)" />
+        </svg>
+        <div class="count">
+          ${hasCount ? `<span class="bs">${esc(sit.balls ?? 0)}-${esc(sit.strikes ?? 0)}</span>` : ""}
+          <span class="outs" aria-label="${outs} out">${[0, 1, 2].map((i) => `<i class="${i < outs ? "on" : ""}"></i>`).join("")}</span>
+        </div>
+        ${pitcher || batter ? `<div class="matchup-names">${pitcher ? `<span>P: ${esc(pitcher)}</span>` : ""}${batter ? `<span>AB: ${esc(batter)}</span>` : ""}</div>` : ""}
+      </div>
+      ${big && last ? `<div class="last-play">${esc(last)}</div>` : ""}
+    </div>`;
+  }
+
+  // Ball spot as 0–100 from the away end zone (left) to the home end zone (right).
+  function ballSpot(sit, away, home) {
+    const text = (sit?.possessionText || "").trim();
+    const m = text.match(/^([A-Z&]{2,5})\s+(\d{1,2})$/);
+    if (m) {
+      const yd = Number(m[2]);
+      if (m[1] === home?.team?.abbreviation) return 100 - yd;
+      if (m[1] === away?.team?.abbreviation) return yd;
+    }
+    if (/^(50|[A-Z&]{2,5} 50)$/.test(text)) return 50;
+    return null;
+  }
+
+  function miniField(sit, away, home) {
+    const spot = ballSpot(sit, away, home);
+    if (spot == null) return "";
+    const poss = String(sit.possession);
+    const dir = poss === String(away?.team?.id) ? 1 : poss === String(home?.team?.id) ? -1 : 0;
+    const togo = Number(sit.distance) || 0;
+    const first = dir ? Math.max(0, Math.min(100, spot + dir * togo)) : null;
+    return `
+      <div class="field" aria-hidden="true">
+        <div class="endzone" style="--team:${teamColor(away?.team)}"></div>
+        <div class="turf">
+          ${first != null ? `<div class="first-line" style="left:${first}%"></div>` : ""}
+          <div class="ball" style="left:${spot}%"></div>
+        </div>
+        <div class="endzone" style="--team:${teamColor(home?.team)}"></div>
+      </div>`;
+  }
+
+  // ---------- rendering: game detail ----------
+
+  function findEvent(key) {
+    return (
+      currentEvents().find((e) => e._key === key) ||
+      Object.values(state.leagues).flatMap((l) => l.events).find((e) => e._key === key) ||
+      state.home.events.find((e) => e._key === key)
+    );
+  }
+
+  function syncOpenGame() {
+    if (!state.openGame) return;
+    const fresh = findEvent(state.openGame.key);
+    if (fresh) state.openGame.event = fresh;
+  }
+
+  function openGame(key) {
+    const ev = findEvent(key);
+    if (!ev) return;
+    state.openGame = { key, event: ev, summary: null };
+    $("game-league").textContent = byKey[ev._league].name;
+    renderDetail();
+    if (!gameDialog.open) gameDialog.showModal();
+    detailEl.scrollTop = 0;
+    refreshDetail();
+    // Keep the open game fresh even when it isn't on the current view's list.
+    if (gameState(ev) === "in") schedule();
+  }
+
+  async function refreshDetail() {
+    const og = state.openGame;
+    if (!og) return;
+    try {
+      og.summary = await fetchSummary(og.event._league, og.event.id);
+      // The summary header carries the freshest status and score for this game.
+      mergeSummaryStatus(og.event, og.summary);
+    } catch {
+      /* keep whatever we had */
+    }
+    if (state.openGame !== og) return;
+    syncClocks();
+    renderDetail();
+  }
+
+  function mergeSummaryStatus(ev, summary) {
+    const hc = summary?.header?.competitions?.[0];
+    if (!hc || gameState(ev) === "post") return;
+    if (hc.status?.type) ev.status = { ...ev.status, ...hc.status };
+    const comp = ev.competitions?.[0];
+    for (const c of hc.competitors || []) {
+      const mine = comp?.competitors?.find((x) => String(x.team?.id) === String(c.team?.id ?? c.id));
+      if (mine && c.score != null) mine.score = typeof c.score === "object" ? c.score.displayValue : c.score;
+    }
+    if (summary.situation && comp) comp.situation = { ...comp.situation, ...summary.situation };
+  }
+
+  function renderDetail() {
+    const og = state.openGame;
+    if (!og) return;
+    const scroll = detailEl.scrollTop;
+    const ev = og.event;
+    detailEl.innerHTML = detailHeader(ev) + (og.summary ? detailBody(ev, og.summary) : detailBody(ev, null) + '<p class="loading">Loading game details…</p>');
+    detailEl.scrollTop = scroll;
+  }
+
+  function detailHeader(ev) {
+    const comp = ev.competitions?.[0] || {};
+    const { away, home } = sides(comp);
+    const st = gameState(ev);
+    const followBtn = (c) => {
+      const key = `${ev._league}:${c?.team?.id}`;
+      const on = state.favorites.has(key);
+      return `<button class="follow-btn${on ? " on" : ""}" data-follow="${esc(key)}">${on ? "Following" : "Follow"}</button>`;
+    };
+    const teamSide = (c) => `
+      <div class="dh-team">
+        ${logo(c?.team, "lg")}
+        <span class="dh-name">${rank(c) ? `<span class="rank">${rank(c)}</span>` : ""}${esc(c?.team?.shortDisplayName || c?.team?.abbreviation)}</span>
+        <span class="dh-record">${esc(recordText(c))}</span>
+        ${followBtn(c)}
+      </div>`;
+    const lost = (c) => st === "post" && comp.competitors?.some((o) => o !== c && o.winner);
+    return `
+      <div class="detail-header" style="--away:${teamColor(away?.team)};--home:${teamColor(home?.team)}">
+        ${teamSide(away)}
+        <div class="dh-score">
+          ${
+            st === "pre"
+              ? '<span class="dh-vs">vs</span>'
+              : `<span class="dh-nums"><span class="${lost(away) ? "lost" : ""}">${esc(away?.score)}</span><span class="dash">–</span><span class="${lost(home) ? "lost" : ""}">${esc(home?.score)}</span></span>`
+          }
+          <span class="dh-status${st === "in" ? " live" : ""}">${statusHTML(ev, true)}</span>
+          ${note(comp) ? `<span class="dh-note">${esc(note(comp))}</span>` : ""}
+        </div>
+        ${teamSide(home)}
+      </div>`;
+  }
+
+  function detailBody(ev, summary) {
+    const league = byKey[ev._league];
+    const comp = ev.competitions?.[0] || {};
+    const { away, home } = sides(comp);
+    const st = gameState(ev);
+    const out = [];
+
+    if (st === "in") {
+      const sit = comp.situation || {};
+      if (league.sport === "football" && (sit.downDistanceText || sit.lastPlay)) {
+        out.push(`
+          <section class="d-section">
+            <h3>On the field</h3>
+            ${sit.downDistanceText ? `<p class="situation${sit.isRedZone ? " redzone" : ""}">${esc(sit.downDistanceText)}${sit.isRedZone ? ' <span class="rz">Red Zone</span>' : ""}</p>` : ""}
+            ${miniField(sit, away, home)}
+            ${sit.lastPlay?.text ? `<p class="last-play">${esc(sit.lastPlay.text)}</p>` : ""}
+          </section>`);
+      } else if (league.sport === "baseball") {
+        const b = baseballSituation(sit, true);
+        if (b) out.push(`<section class="d-section"><h3>At bat</h3>${b}</section>`);
+      }
+    }
+
+    if (st !== "pre") out.push(lineScore(league, away, home));
+
+    if (summary) {
+      if (league.sport === "football" || league.sport === "hockey") out.push(scoringSection(summary, league));
+      if (league.sport === "football") out.push(drivesSection(summary));
+      else out.push(playsSection(summary, league));
+      out.push(leadersSection(summary, comp));
+      out.push(teamStats(summary, league));
+    }
+    out.push(infoSection(ev, comp));
+    return out.join("");
+  }
+
+  function periodHeads(league, n) {
+    return Array.from({ length: n }, (_, i) => {
+      if (league.sport === "baseball") return i + 1;
+      const reg = league.sport === "hockey" ? 3 : 4;
+      if (i < reg) return i + 1;
+      return i === reg ? "OT" : `${i - reg + 1}OT`;
+    });
+  }
+
+  function lineScore(league, away, home) {
+    const min = league.sport === "baseball" ? 9 : league.sport === "hockey" ? 3 : 4;
+    const n = Math.max(min, away?.linescores?.length || 0, home?.linescores?.length || 0);
+    const heads = periodHeads(league, n);
+    const baseball = league.sport === "baseball";
+    const val = (c, i) => {
+      const l = c?.linescores?.[i];
+      return l ? (l.displayValue ?? l.value ?? "") : "";
+    };
+    const row = (c) => `
+      <tr>
+        <th scope="row">${esc(c?.team?.abbreviation)}</th>
+        ${heads.map((_, i) => `<td>${esc(val(c, i))}</td>`).join("")}
+        <td class="total">${esc(c?.score)}</td>
+        ${baseball ? `<td>${esc(c?.hits ?? "")}</td><td>${esc(c?.errors ?? "")}</td>` : ""}
+      </tr>`;
+    return `
+      <section class="d-section">
+        <div class="table-scroll">
+          <table class="linescore">
+            <thead><tr><th></th>${heads.map((h) => `<th>${h}</th>`).join("")}<th>${baseball ? "R" : "T"}</th>${baseball ? "<th>H</th><th>E</th>" : ""}</tr></thead>
+            <tbody>${row(away)}${row(home)}</tbody>
+          </table>
+        </div>
+      </section>`;
+  }
+
+  function periodLabel(p, league) {
+    if (p?.period?.displayValue && league.sport === "baseball") return p.period.displayValue;
+    const n = p?.period?.number;
+    if (!n) return "";
+    const prefix = league.sport === "hockey" ? "P" : "Q";
+    const reg = league.sport === "hockey" ? 3 : 4;
+    return n > reg ? "OT" : `${prefix}${n}`;
+  }
+
+  function scoringSection(summary, league) {
+    const plays = summary.scoringPlays || [];
+    if (!plays.length) return "";
+    return `
+      <section class="d-section">
+        <h3>Scoring</h3>
+        <ol class="plays">
+          ${plays
+            .map(
+              (p) => `
+            <li>
+              <span class="play-when">${esc(periodLabel(p, league))} ${esc(p.clock?.displayValue || "")}</span>
+              <span class="play-team">${logo(p.team, "xs")}${esc(p.team?.abbreviation || "")}</span>
+              <span class="play-score">${esc(p.awayScore)}–${esc(p.homeScore)}</span>
+              <span class="play-text">${esc(p.text)}</span>
+            </li>`
+            )
+            .join("")}
+        </ol>
+      </section>`;
+  }
+
+  function drivesSection(summary) {
+    const drives = summary.drives?.previous || [];
+    if (!drives.length) return "";
+    return `
+      <section class="d-section">
+        <h3>Drives</h3>
+        <ol class="drives">
+          ${drives
+            .slice()
+            .reverse()
+            .slice(0, 12)
+            .map(
+              (d) => `
+            <li>
+              <span class="play-team">${logo(d.team, "xs")}${esc(d.team?.abbreviation || "")}</span>
+              <span class="drive-result">${esc(d.displayResult || d.result || "")}</span>
+              <span class="drive-desc">${esc(d.description || "")}</span>
+            </li>`
+            )
+            .join("")}
+        </ol>
+      </section>`;
+  }
+
+  function playsSection(summary, league) {
+    const plays = (summary.plays || []).filter((p) => p.text);
+    if (!plays.length) return "";
+    const teamsById = {};
+    for (const t of summary.boxscore?.teams || []) if (t.team) teamsById[t.team.id] = t.team;
+    return `
+      <section class="d-section">
+        <h3>Latest plays</h3>
+        <ol class="plays recent">
+          ${plays
+            .slice(-15)
+            .reverse()
+            .map((p) => {
+              const team = p.team?.id ? teamsById[p.team.id] : null;
+              return `
+            <li${p.scoringPlay ? ' class="scoring"' : ""}>
+              <span class="play-when">${esc(periodLabel(p, league))} ${league.sport === "baseball" ? "" : esc(p.clock?.displayValue || "")}</span>
+              <span class="play-team">${team ? `${logo(team, "xs")}${esc(team.abbreviation || "")}` : ""}</span>
+              <span class="play-score">${p.awayScore != null ? `${esc(p.awayScore)}–${esc(p.homeScore)}` : ""}</span>
+              <span class="play-text">${esc(p.text)}</span>
+            </li>`;
+            })
+            .join("")}
+        </ol>
+      </section>`;
+  }
+
+  function leadersSection(summary, comp) {
+    const groups = (summary.leaders || []).filter((g) => g.leaders?.length);
+    if (groups.length === 2) {
+      const cats = groups[0].leaders.slice(0, 3);
+      const rows = cats
+        .map((cat) => {
+          const cells = groups.map((g) => {
+            const l = g.leaders.find((x) => x.name === cat.name)?.leaders?.[0];
+            return `<div class="leader">${
+              l ? `<span class="leader-name">${esc(l.athlete?.shortName || l.athlete?.displayName)}</span><span class="leader-line">${esc(l.displayValue)}</span>` : ""
+            }</div>`;
+          });
+          return `<div class="leader-row"><span class="leader-cat">${esc(cat.shortDisplayName || cat.displayName || cat.name)}</span>${cells.join("")}</div>`;
+        })
+        .join("");
+      return `
+        <section class="d-section">
+          <h3>Leaders</h3>
+          <div class="leader-row head"><span></span>${groups.map((g) => `<span>${esc(g.team?.abbreviation)}</span>`).join("")}</div>
+          ${rows}
+        </section>`;
+    }
+    const flat = comp.leaders;
+    if (Array.isArray(flat) && flat.length) {
+      return `
+        <section class="d-section">
+          <h3>Leaders</h3>
+          ${flat
+            .map((cat) => {
+              const l = cat.leaders?.[0];
+              if (!l) return "";
+              return `<div class="leader-row flat"><span class="leader-cat">${esc(cat.shortDisplayName || cat.displayName)}</span><div class="leader"><span class="leader-name">${esc(l.athlete?.shortName || l.athlete?.displayName)}</span><span class="leader-line">${esc(l.displayValue)}</span></div></div>`;
+            })
+            .join("")}
+        </section>`;
+    }
+    return "";
+  }
+
+  function teamStats(summary, league) {
+    const teams = summary.boxscore?.teams;
+    if (!Array.isArray(teams) || teams.length !== 2) return "";
+    const byName = (t) => Object.fromEntries((t.statistics || []).filter((s) => s.displayValue != null).map((s) => [s.name, s]));
+    const [a, b] = teams.map(byName);
+    let names;
+    if (league.sport === "football") {
+      names = ["totalYards", "netPassingYards", "rushingYards", "firstDowns", "thirdDownEff", "turnovers", "totalPenaltiesYards", "possessionTime"];
+    } else {
+      names = Object.keys(a).filter((n) => b[n]).slice(0, 10);
+    }
+    const rows = names
+      .filter((n) => a[n] || b[n])
+      .map(
+        (n) => `
+        <tr>
+          <td>${esc(a[n]?.displayValue ?? "–")}</td>
+          <th scope="row">${esc(a[n]?.label || b[n]?.label || n)}</th>
+          <td>${esc(b[n]?.displayValue ?? "–")}</td>
+        </tr>`
+      )
+      .join("");
+    if (!rows) return "";
+    return `
+      <section class="d-section">
+        <h3>Team stats</h3>
+        <table class="team-stats">
+          <thead><tr><th>${esc(teams[0].team?.abbreviation)}</th><th></th><th>${esc(teams[1].team?.abbreviation)}</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </section>`;
+  }
+
+  function infoSection(ev, comp) {
+    const odds = comp.odds?.[0];
+    const info = [
+      ["Start", startText(ev, true)],
+      ["Venue", [comp.venue?.fullName, comp.venue?.address?.city, comp.venue?.address?.state].filter(Boolean).join(", ")],
+      ["TV", broadcasts(comp)],
+      ["Line", odds?.details],
+      ["Over/Under", odds?.overUnder],
+    ].filter(([, v]) => v);
+    if (!info.length) return "";
+    return `
+      <section class="d-section">
+        <h3>Game info</h3>
+        <dl class="info">${info.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
+      </section>`;
+  }
+
+  // ---------- team picker ----------
+
+  function openTeams(leagueKey) {
+    if (leagueKey) state.pickerLeague = leagueKey;
+    else if (state.view !== "home") state.pickerLeague = state.view;
+    searchEl.value = "";
+    renderPicker();
+    if (!teamsDialog.open) teamsDialog.showModal();
+    loadPickerTeams();
+  }
+
+  async function loadPickerTeams() {
+    const key = state.pickerLeague;
+    if (state.teams[key]) return;
+    try {
+      state.teams[key] = await fetchTeams(key);
+    } catch (err) {
+      state.teams[key] = null;
+      if (state.pickerLeague === key) teamListEl.innerHTML = `<p class="loading">Couldn't load teams (${esc(err.message)}).</p>`;
+      return;
+    }
+    if (state.pickerLeague === key) renderPicker();
+  }
+
+  function renderPicker() {
+    const key = state.pickerLeague;
+    pickerNavEl.innerHTML = LEAGUES.map((l) => {
+      const count = [...state.favorites.values()].filter((f) => f.league === l.key).length;
+      return `<button class="chip${l.key === key ? " active" : ""}" data-picker="${l.key}">${esc(shortName(l))}${count ? ` <span class="count">${count}</span>` : ""}</button>`;
+    }).join("");
+
+    const teams = state.teams[key];
+    if (!teams) {
+      teamListEl.innerHTML = '<p class="loading">Loading teams…</p>';
+      return;
+    }
+    const q = searchEl.value.trim().toLowerCase();
+    const list = teams.filter((t) => !q || `${t.name} ${t.abbr}`.toLowerCase().includes(q));
+    // Followed teams first so they're easy to find and unfollow.
+    list.sort((a, b) => Number(state.favorites.has(b.key)) - Number(state.favorites.has(a.key)));
+    teamListEl.innerHTML = list.length
+      ? list
+          .map((t) => {
+            const on = state.favorites.has(t.key);
+            return `
+          <button class="team-item${on ? " on" : ""}" data-team="${esc(t.key)}" aria-pressed="${on}">
+            ${logo({ logo: t.logo, color: t.color })}
+            <span class="team-item-name">${esc(t.name)}</span>
+            <span class="check">${on ? "✓" : "+"}</span>
+          </button>`;
+          })
+          .join("")
+      : '<p class="loading">No teams match.</p>';
+  }
+
+  function toggleFavorite(key, info) {
+    if (state.favorites.has(key)) state.favorites.delete(key);
+    else if (info) state.favorites.set(key, info);
+    state.nexts.delete(key);
+    saveFavorites();
+  }
+
+  function teamInfoFromEvent(key) {
+    const [league, id] = key.split(":");
+    const ev = state.openGame?.event;
+    const c = ev?.competitions?.[0]?.competitors?.find((x) => String(x.team?.id) === id);
+    if (!c) return null;
+    const t = c.team;
+    return { key, league, id, abbr: t.abbreviation, name: t.displayName, short: t.shortDisplayName, logo: t.logo || "", color: t.color || "" };
+  }
+
+  // ---------- navigation ----------
+
+  function setView(view) {
+    if (view !== "home" && !byKey[view]) view = "home";
+    if (state.view === view && state.seq) return;
+    state.view = view;
+    if (location.hash.slice(1) !== view) history.replaceState(null, "", `#${view}`);
+    render();
+    refresh();
+  }
+
+  function stepDay(n) {
+    const ls = leagueState(state.view);
+    ls.cursor = { date: addDays(ls.cursor?.date || today(), n) };
+    goTo();
+  }
+
+  function goToDay(date) {
+    leagueState(state.view).cursor = { date };
+    goTo();
+  }
+
+  function goToWeek(idx) {
+    const ls = leagueState(state.view);
+    const w = ls.weeks[idx];
+    if (!w) return;
+    ls.cursor = { season: ls.cursor?.season, seasonType: w.seasonType, week: w.week };
+    goTo();
+  }
+
+  function goTo() {
+    const ls = leagueState(state.view);
+    ls.events = [];
+    ls.lastUpdated = null;
+    ls.error = null;
+    render();
+    refresh();
+  }
+
+  // ---------- events ----------
+
+  navEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-view]");
+    if (btn) setView(btn.dataset.view);
+  });
+
+  toolbarEl.addEventListener("click", (e) => {
+    const step = e.target.closest("[data-step]");
+    if (step && !step.disabled) {
+      const n = Number(step.dataset.step);
+      if (byKey[state.view].mode === "day") stepDay(n);
+      else {
+        const ls = leagueState(state.view);
+        const idx = ls.weeks.findIndex((w) => w.seasonType === ls.cursor?.seasonType && w.week === ls.cursor?.week);
+        goToWeek(idx + n);
+      }
+      return;
+    }
+    if (e.target.closest("[data-today]")) goToDay(today());
+  });
+
+  toolbarEl.addEventListener("change", (e) => {
+    if (e.target.id === "week-select") goToWeek(Number(e.target.value));
+  });
+
+  gamesEl.addEventListener("click", (e) => {
+    const c = e.target.closest(".card");
+    if (c) openGame(c.dataset.key);
+  });
+
+  gamesEl.addEventListener("keydown", (e) => {
+    if ((e.key === "Enter" || e.key === " ") && e.target.classList.contains("card")) {
+      e.preventDefault();
+      openGame(e.target.dataset.key);
+    }
+  });
+
+  emptyEl.addEventListener("click", (e) => {
+    if (e.target.closest("[data-open-teams]")) openTeams("nfl");
+    const day = e.target.closest("[data-goto-day]");
+    if (day) goToDay(day.dataset.gotoDay);
+  });
+
+  detailEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-follow]");
+    if (!btn) return;
+    toggleFavorite(btn.dataset.follow, teamInfoFromEvent(btn.dataset.follow));
+    renderDetail();
+    if (state.view === "home") refresh();
+    else render();
+  });
+
+  $("teams-btn").addEventListener("click", () => openTeams());
+  $("close-teams").addEventListener("click", () => teamsDialog.close());
+  $("close-game").addEventListener("click", () => gameDialog.close());
+
+  pickerNavEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-picker]");
+    if (!btn) return;
+    state.pickerLeague = btn.dataset.picker;
+    renderPicker();
+    loadPickerTeams();
+  });
+
+  searchEl.addEventListener("input", renderPicker);
+
+  teamListEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-team]");
+    if (!btn) return;
+    const key = btn.dataset.team;
+    const info = state.teams[state.pickerLeague]?.find((t) => t.key === key);
+    toggleFavorite(key, info);
+    renderPicker();
+  });
+
+  for (const d of [gameDialog, teamsDialog]) {
+    d.addEventListener("click", (e) => {
+      if (e.target === d) d.close();
+    });
+  }
+
+  gameDialog.addEventListener("close", () => {
+    state.openGame = null;
+  });
+
+  teamsDialog.addEventListener("close", () => {
+    if (state.view === "home") refresh();
+    else render();
+  });
+
+  window.addEventListener("hashchange", () => setView(location.hash.slice(1) || "home"));
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) clearTimeout(state.timer);
+    else refresh();
+  });
+
+  // ---------- install ----------
+
+  let installPrompt = null;
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    installPrompt = e;
+    installBtn.hidden = false;
+  });
+  installBtn.addEventListener("click", async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice.catch(() => null);
+    installPrompt = null;
+    installBtn.hidden = true;
+  });
+  window.addEventListener("appinstalled", () => {
+    installBtn.hidden = true;
+  });
+
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+
+  // ---------- start ----------
+
+  const initial = location.hash.slice(1);
+  state.view = byKey[initial] ? initial : "home";
+  if (!initial && !state.favorites.size) state.view = "home";
+  render();
+  refresh();
+})();
