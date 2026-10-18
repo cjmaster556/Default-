@@ -59,6 +59,7 @@
     clocks: new Map(),
     openGame: null, // { key, event, summary }
     detailTab: "stats",
+    leagueClocks: {}, // "nhl:TOR@BOS" -> { secs, running, period, at }
     tab: "scores", // scores | standings | videos | news
     tabLeague: { standings: "nfl", videos: "home", news: "home" },
     tabVariant: {}, // "standings:nfl" -> "division" | "conference"
@@ -388,6 +389,8 @@
       if (seq !== state.seq) return;
     }
     checkAlerts();
+    await syncLeagueClocks();
+    if (seq !== state.seq) return;
 
     syncOpenGame();
     syncClocks();
@@ -741,12 +744,25 @@
     for (const ev of events) {
       if (gameState(ev) !== "in" || seen.has(ev._key)) continue;
       seen.add(ev._key);
-      const p = parseClock(ev.status?.displayClock);
+      // The NHL's own feed says outright whether the clock is running: use it as is.
+      const lc = leagueClockFor(ev);
+      if (lc?.running != null) {
+        const prev = state.clocks.get(ev._key);
+        if (!prev || prev.feedAt !== lc.at) {
+          // Same rule as elsewhere: a stop that lands just behind what we showed holds, not bounces.
+          const shown = prev ? clockSeconds(ev._key) : null;
+          const hold = !lc.running && prev?.period === lc.period && shown != null && lc.secs > shown && lc.secs - shown <= HOLD_MAX ? shown : null;
+          state.clocks.set(ev._key, { reported: lc.secs, anchor: lc.secs, anchorAt: lc.at, changedAt: lc.at, running: lc.running, period: lc.period, tenths: false, gaps: [], sig: "", feedAt: lc.at, official: true, hold: hold ?? (lc.running && prev?.hold != null && lc.secs > prev.hold ? prev.hold : null) });
+        }
+        continue;
+      }
+      // The NBA's own clock is fresher than ESPN's; read it through the usual rules.
+      const p = lc ? { secs: lc.secs, tenths: lc.tenths } : parseClock(ev.status?.displayClock);
       if (!p) {
         state.clocks.delete(ev._key);
         continue;
       }
-      const period = ev.status?.period;
+      const period = lc ? lc.period : ev.status?.period;
       const sig = playSignature(ev);
       const prev = state.clocks.get(ev._key);
       const sport = byKey[ev._league]?.sport;
@@ -833,6 +849,16 @@
   function clockSeconds(key) {
     const c = state.clocks.get(key);
     if (!c) return null;
+    if (c.official) {
+      // Straight from the league: run while it says running, up to a little past its next refresh.
+      const elapsed = c.running ? Math.min((Date.now() - c.anchorAt) / 1000, 40) : 0;
+      const secs = Math.max(0, c.anchor - elapsed);
+      if (c.hold != null) {
+        if (c.running && secs < c.hold) c.hold = null;
+        else return c.hold;
+      }
+      return secs;
+    }
     let secs = c.anchor;
     if (c.running) {
       // Never run further past the last change than the feed would normally take
@@ -845,6 +871,66 @@
       else return c.hold;
     }
     return secs;
+  }
+
+  // ---- league clock feeds (NHL, NBA) ----
+
+  // ESPN and the leagues spell a few team codes differently.
+  const LEAGUE_ABBR = {
+    nhl: { NJD: "NJ", LAK: "LA", SJS: "SJ", TBL: "TB", UTA: "UTAH" },
+    nba: { GSW: "GS", NYK: "NY", NOP: "NO", SAS: "SA", UTA: "UTAH", WAS: "WSH" },
+  };
+  const LEAGUE_CLOCK_TTL = 60 * 1000; // ignore a league reading older than this
+
+  // "PT05M32.00S" -> 332
+  function isoClock(text) {
+    const m = /^PT(\d+)M([\d.]+)S$/.exec(text || "");
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  }
+
+  async function syncLeagueClocks() {
+    if (!ALERTS_SERVER || demoMode) return;
+    const live = [...currentEvents(), ...(state.openGame ? [state.openGame.event] : []), ...(state.alerts ? state.home.events : [])].filter(
+      (ev) => gameState(ev) === "in"
+    );
+    const leagues = [...new Set(live.map((ev) => ev._league))].filter((l) => l === "nhl" || l === "nba");
+    await Promise.allSettled(leagues.map(fetchLeagueClock));
+  }
+
+  async function fetchLeagueClock(league) {
+    const path = league === "nhl" ? "/nhl/v1/score/now" : "/nba/static/json/liveData/scoreboard/todaysScoreboard_00.json";
+    const started = Date.now();
+    const res = await fetch(`${ALERTS_SERVER}${path}`, { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    // When the league's copy was taken: now, less its age and half the trip.
+    const at = Date.now() - (Number(res.headers.get("X-Data-Age")) || 0) * 1000 - (Date.now() - started) / 2;
+    const fix = (code) => LEAGUE_ABBR[league][code] || code;
+    const games = league === "nhl" ? data.games || [] : data.scoreboard?.games || [];
+    for (const g of games) {
+      let entry;
+      if (league === "nhl") {
+        if (!g.clock || g.gameState !== "LIVE" && g.gameState !== "CRIT") continue;
+        entry = {
+          teams: [fix(g.awayTeam?.abbrev), fix(g.homeTeam?.abbrev)],
+          secs: g.clock.secondsRemaining,
+          running: !!g.clock.running && !g.clock.inIntermission,
+          period: g.periodDescriptor?.number ?? g.period,
+        };
+      } else {
+        const secs = isoClock(g.gameClock);
+        if (g.gameStatus !== 2 || secs == null) continue;
+        entry = { teams: [fix(g.awayTeam?.teamTricode), fix(g.homeTeam?.teamTricode)], secs, tenths: secs < 60, running: null, period: g.period };
+      }
+      state.leagueClocks[`${league}:${entry.teams.join("@")}`] = { ...entry, at };
+    }
+  }
+
+  function leagueClockFor(ev) {
+    if (ev._league !== "nhl" && ev._league !== "nba") return null;
+    const { away, home } = sides(ev.competitions?.[0]);
+    const lc = state.leagueClocks[`${ev._league}:${away?.team?.abbreviation}@${home?.team?.abbreviation}`];
+    return lc && Date.now() - lc.at < LEAGUE_CLOCK_TTL ? lc : null;
   }
 
   function formatClock(secs, tenths) {

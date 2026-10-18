@@ -46,7 +46,7 @@ Cloudflare Worker on the free plan, with a D1 database (`schema.sql`: subs, game
   VAPID keys are generated on first run and stored in D1.
 - `/espn/...` passes through allowed ESPN feeds. `/videos?league=` serves league YouTube videos, with channel IDs resolved from handles and cached.
   Videos are saved for 3 days because the RSS feed only holds 15.
-- `/nhl/...` and `/nba/...` pass through the leagues' own live feeds (in progress, see below), with an `X-Data-Age` header.
+- `/nhl/...` and `/nba/...` pass through the leagues' own live feeds (`api-web.nhle.com/v1/score/now`, `cdn.nba.com` liveData scoreboard), with an `X-Data-Age` header.
 - **Deploys**: `.github/workflows/alerts-worker.yml` runs on any push touching `alerts-worker/` or the workflow (Node 22, wrangler 4.145.0).
   Secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are set.
   The **"Check the live server"** step logs real ESPN, YouTube, NHL and NBA data shapes, and is the way to see live data, because this sandbox can't reach those hosts.
@@ -60,7 +60,8 @@ Cloudflare Worker on the free plan, with a D1 database (`schema.sql`: subs, game
 
 ## In progress / ideas
 
-- **NHL and NBA clocks from the leagues' own feeds** (user approved; football stays on the ESPN ticking estimate).
-  The NHL feed (`api-web.nhle.com/v1/score/now`) has a clock with running/intermission flags. The NBA uses `cdn.nba.com` liveData.
-  Match games to ESPN events by team abbreviation.
+- **League clocks** (done, see `// ---- league clock feeds`): NHL games use the NHL's clock and its `running`/`inIntermission`
+  flags directly (no guessing). NBA games feed the NBA's `gameClock` (ISO, e.g. PT05M32.00S) into the usual rules. Games are matched
+  to ESPN events by team code (`LEAGUE_ABBR` fixes differences). Verify against a real NBA game once the season is
+  under way; there was no live NBA data to check against when this was built.
 - Ideas the user hasn't asked for yet: game-start reminders, choosing which alerts to get, moving the app to the main branch.
