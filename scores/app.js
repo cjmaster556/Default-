@@ -503,7 +503,8 @@
   }
 
   function checkAlerts() {
-    const notifyOK = state.alerts && alertsSupported() && Notification.permission === "granted";
+    // When the alerts server is sending alerts, the app doesn't send its own copies.
+    const notifyOK = state.alerts && !state.pushActive && alertsSupported() && Notification.permission === "granted";
     for (const ev of state.home.events) {
       if (!isFavGame(ev)) continue;
       const comp = ev.competitions?.[0] || {};
@@ -556,12 +557,76 @@
     }
   }
 
+  // ---- push alerts from the alerts server (work with the app closed) ----
+
+  const ALERTS_SERVER = String(window.SCORELINE_CONFIG?.alertsServer || "").replace(/\/$/, "");
+  const pushSupported = () => !!ALERTS_SERVER && "PushManager" in window && "serviceWorker" in navigator;
+
+  const fromB64url = (str) => {
+    const s = str.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((str.length + 3) % 4);
+    return Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  };
+
+  async function postServer(path, body) {
+    const res = await fetch(`${ALERTS_SERVER}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+
+  // Sign this phone up with the alerts server and tell it which teams to watch.
+  async function syncPush() {
+    if (!pushSupported() || !state.alerts || Notification.permission !== "granted") return false;
+    const reg = await navigator.serviceWorker.ready;
+    const res = await fetch(`${ALERTS_SERVER}/vapid`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const key = fromB64url((await res.json()).publicKey);
+    let sub = await reg.pushManager.getSubscription();
+    // A subscription made for a different server key can't receive our alerts; replace it.
+    const current = sub?.options?.applicationServerKey;
+    if (sub && current && !new Uint8Array(current).every((b, i) => b === key[i])) {
+      await sub.unsubscribe();
+      sub = null;
+    }
+    sub ||= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+    const teams = [...state.favorites.values()].map((f) => ({ league: f.league, id: f.id }));
+    await postServer("/subscribe", { subscription: sub.toJSON(), teams });
+    state.pushActive = true;
+    return sub;
+  }
+
+  async function stopPush() {
+    state.pushActive = false;
+    if (!pushSupported()) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (!sub) return;
+      await postServer("/unsubscribe", { endpoint: sub.endpoint }).catch(() => {});
+      await sub.unsubscribe();
+    } catch {
+      /* nothing left to undo */
+    }
+  }
+
+  // Following or unfollowing a team updates the server's list, a moment later.
+  let pushSyncTimer = null;
+  function schedulePushSync() {
+    if (!state.alerts || !pushSupported()) return;
+    clearTimeout(pushSyncTimer);
+    pushSyncTimer = setTimeout(() => syncPush().catch(() => {}), 1500);
+  }
+
   async function toggleAlerts() {
     if (state.alerts) {
       state.alerts = false;
       saveAlerts();
       renderAlertsBtn();
       toast("Score alerts off");
+      stopPush();
       return;
     }
     let perm = Notification.permission;
@@ -573,8 +638,20 @@
     state.alerts = true;
     saveAlerts();
     renderAlertsBtn();
-    toast(state.favorites.size ? "Score alerts on for your teams" : "Score alerts on. Follow some teams to get them.");
     refresh();
+    if (!pushSupported()) {
+      toast(state.favorites.size ? "Score alerts on for your teams" : "Score alerts on. Follow some teams to get them.");
+      return;
+    }
+    toast("Turning on score alerts…");
+    try {
+      const sub = await syncPush();
+      // A test alert proves the whole path works, end to end.
+      await postServer("/test", { endpoint: sub.endpoint });
+      toast("Score alerts on. A test alert is on its way.");
+    } catch {
+      toast("Couldn't reach the alerts server, so alerts will only come while the app is open.");
+    }
   }
 
   function renderAlertsBtn() {
@@ -1708,6 +1785,7 @@
     else if (info) state.favorites.set(key, info);
     state.nexts.delete(key);
     saveFavorites();
+    schedulePushSync();
   }
 
   function teamInfoFromEvent(key) {
@@ -1964,4 +2042,6 @@
   renderAlertsBtn();
   render();
   refresh();
+  // Keep the server's copy of your teams current, and renew the sign-up if the browser dropped it.
+  if (state.alerts) syncPush().catch(() => {});
 })();

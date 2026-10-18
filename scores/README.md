@@ -6,7 +6,7 @@ Live scores for the NFL, college football, NBA, WNBA, MLB and NHL, in the style 
 - **League views:** browse by week (football) or by day (everything else), with a shortcut to the next day that has games.
 - **Live details:** running game clocks; football down and distance, red zone and a field graphic; baseball bases, count, outs and the pitcher/batter matchup; last play.
 - **Game sheet:** tap a game for the line score, scoring plays, drives or latest plays, leaders, team stats and game info.
-- **Score alerts:** tap the bell to get a notification when a team you follow scores, when its game starts and when it ends. Alerts work while the app is open or recently in the background; there is no push server.
+- **Score alerts:** tap the bell to get a notification when a team you follow scores, when its game starts and when it ends. With the alerts server (`alerts-worker/`) set up, alerts arrive even when the app is closed; otherwise they come while the app is open.
 - **Auto-refresh:** every 5s while games are live, every minute near start time, every 5 minutes otherwise. It pauses while the app is in the background.
 
 Scores come from ESPN's public site API, called from the browser.

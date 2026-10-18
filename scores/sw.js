@@ -1,7 +1,7 @@
 // Network-first for the app's own files so updates show up right away, with a
 // cached copy as the fallback when offline. Score requests go straight to ESPN.
-const CACHE = "scoreline-v7";
-const SHELL = ["./", "index.html", "style.css", "app.js", "demo.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
+const CACHE = "scoreline-v8";
+const SHELL = ["./", "index.html", "style.css", "app.js", "config.js", "demo.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
@@ -47,6 +47,26 @@ self.addEventListener("notificationclick", (e) => {
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
       const open = list.find((c) => c.url.startsWith(self.registration.scope));
       return open ? open.focus() : self.clients.openWindow(url);
+    })
+  );
+});
+
+// An alert from the alerts server (sent even when the app is closed).
+self.addEventListener("push", (e) => {
+  let d = {};
+  try {
+    d = e.data ? e.data.json() : {};
+  } catch {
+    d = { body: e.data ? e.data.text() : "" };
+  }
+  e.waitUntil(
+    self.registration.showNotification(d.title || "Scoreline", {
+      body: d.body || "",
+      tag: d.tag,
+      renotify: !!d.tag,
+      icon: "icons/icon-192.png",
+      badge: "icons/icon-192.png",
+      data: { url: d.url || self.registration.scope },
     })
   );
 });

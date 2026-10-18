@@ -1,0 +1,56 @@
+name: Deploy alerts server
+
+# Deploys the Scoreline alerts server to Cloudflare whenever it changes.
+# Needs two repository secrets: CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
+on:
+  push:
+    paths:
+      - "alerts-worker/**"
+      - ".github/workflows/alerts-worker.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: alerts-worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER: npx --yes wrangler@4.145.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check Cloudflare secrets
+        id: secrets
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::warning::Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID as repository secrets to deploy the alerts server."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create the database if needed
+        if: steps.secrets.outputs.ready == 'true'
+        run: |
+          id=$($WRANGLER d1 list --json | jq -r '.[] | select(.name == "scoreline-alerts") | (.uuid // .id)' | head -n1)
+          if [ -z "$id" ]; then
+            $WRANGLER d1 create scoreline-alerts
+            id=$($WRANGLER d1 list --json | jq -r '.[] | select(.name == "scoreline-alerts") | (.uuid // .id)' | head -n1)
+          fi
+          if [ -z "$id" ]; then echo "::error::Couldn't create or find the scoreline-alerts database."; exit 1; fi
+          sed -i "s/__D1_DATABASE_ID__/$id/" wrangler.toml
+
+      - name: Set up the tables
+        if: steps.secrets.outputs.ready == 'true'
+        run: $WRANGLER d1 execute scoreline-alerts --remote --file schema.sql --yes
+
+      - name: Deploy
+        if: steps.secrets.outputs.ready == 'true'
+        run: $WRANGLER deploy

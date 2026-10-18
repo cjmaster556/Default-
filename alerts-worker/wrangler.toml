@@ -1,0 +1,16 @@
+name = "scoreline-alerts"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+ALLOWED_ORIGINS = "https://cjmaster556.github.io"
+
+# The deploy workflow fills in database_id after creating the database.
+[[d1_databases]]
+binding = "DB"
+database_name = "scoreline-alerts"
+database_id = "__D1_DATABASE_ID__"
