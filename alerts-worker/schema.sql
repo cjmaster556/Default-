@@ -21,3 +21,13 @@ CREATE TABLE IF NOT EXISTS config (
   k TEXT PRIMARY KEY,
   v TEXT NOT NULL
 );
+
+-- League highlight videos seen on YouTube, kept a few days.
+CREATE TABLE IF NOT EXISTS videos (
+  id TEXT PRIMARY KEY,
+  league TEXT NOT NULL,
+  title TEXT NOT NULL,
+  published TEXT NOT NULL,
+  thumbnail TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS videos_by_league ON videos (league, published);

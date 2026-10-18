@@ -162,21 +162,48 @@ async function channelId(env, league) {
   return m[1];
 }
 
-async function videos(env, league) {
-  if (!CHANNELS[league]) return json({ error: "Unknown league" }, 404);
+// YouTube's feed only lists a channel's newest 15 videos, which on a busy
+// Sunday is under an hour. Save every video we see for a few days so a game's
+// highlights stay findable after newer videos push them off the feed.
+const KEEP_VIDEOS_MS = 3 * 86400000;
+
+async function refreshVideos(env, league) {
   const id = await channelId(env, league);
   const xml = await (await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${id}`)).text();
-  const items = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].map(([, e]) => {
-    const pick = (re) => decodeXml((e.match(re) || [])[1] || "");
-    return {
-      id: pick(/<yt:videoId>([^<]+)<\/yt:videoId>/),
-      title: pick(/<title>([\s\S]*?)<\/title>/),
-      published: pick(/<published>([^<]+)<\/published>/),
-      thumbnail: pick(/<media:thumbnail url="([^"]+)"/),
-    };
-  });
-  return new Response(JSON.stringify({ league, channel: CHANNELS[league], items: items.filter((v) => v.id) }), {
-    headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=600" },
+  const items = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)]
+    .map(([, e]) => {
+      const pick = (re) => decodeXml((e.match(re) || [])[1] || "");
+      return {
+        id: pick(/<yt:videoId>([^<]+)<\/yt:videoId>/),
+        title: pick(/<title>([\s\S]*?)<\/title>/),
+        published: pick(/<published>([^<]+)<\/published>/),
+        thumbnail: pick(/<media:thumbnail url="([^"]+)"/),
+      };
+    })
+    .filter((v) => v.id);
+  if (items.length) {
+    // Only new videos are written; ones already saved are skipped.
+    await env.DB.batch(
+      items.map((v) =>
+        env.DB.prepare("INSERT OR IGNORE INTO videos (id, league, title, published, thumbnail) VALUES (?, ?, ?, ?, ?)").bind(v.id, league, v.title, v.published, v.thumbnail)
+      )
+    );
+  }
+}
+
+async function videos(env, league) {
+  if (!CHANNELS[league]) return json({ error: "Unknown league" }, 404);
+  try {
+    await refreshVideos(env, league);
+  } catch {
+    /* serve what's saved */
+  }
+  const since = new Date(Date.now() - KEEP_VIDEOS_MS).toISOString();
+  const rows = await env.DB.prepare("SELECT id, title, published, thumbnail FROM videos WHERE league = ? AND published >= ? ORDER BY published DESC LIMIT 80")
+    .bind(league, since)
+    .all();
+  return new Response(JSON.stringify({ league, channel: CHANNELS[league], items: rows.results || [] }), {
+    headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=300" },
   });
 }
 
@@ -215,6 +242,11 @@ async function runChecks(env) {
     await checkOnce(env);
   }
   await env.DB.prepare("DELETE FROM games WHERE updated < ?").bind(Date.now() - 3 * 86400000).run();
+  // Every five minutes, save any new league videos, and drop old ones.
+  if (new Date().getUTCMinutes() % 5 === 0) {
+    await Promise.allSettled(Object.keys(CHANNELS).map((league) => refreshVideos(env, league)));
+    await env.DB.prepare("DELETE FROM videos WHERE published < ?").bind(new Date(Date.now() - KEEP_VIDEOS_MS).toISOString()).run();
+  }
 }
 
 function scoreboardURL(env, league) {
