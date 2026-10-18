@@ -2153,3 +2153,84 @@ table {
   height: 100%;
   background: #000;
 }
+
+/* ---- "More highlights" under the player ---- */
+
+.video-sheet.has-more {
+  height: min(100dvh, 900px);
+}
+
+.video-sheet .video-link {
+  padding-bottom: 14px;
+}
+
+.video-more {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 16px calc(env(safe-area-inset-bottom) + 20px);
+}
+
+.video-more h3 {
+  margin: 4px 0 8px;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.more-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  margin: 0 -8px;
+  border-radius: 14px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.more-row.playing {
+  background: var(--card-2);
+}
+
+.more-thumb {
+  position: relative;
+  flex: 0 0 132px;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--card);
+}
+
+.more-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.more-thumb .hl-time {
+  left: 6px;
+  bottom: 6px;
+  font-size: 0.68rem;
+}
+
+.more-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.more-title {
+  font-weight: 700;
+  font-size: 0.88rem;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.more-row.playing .meta-line {
+  color: var(--accent);
+  font-weight: 600;
+}

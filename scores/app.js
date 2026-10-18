@@ -1259,6 +1259,7 @@
       plays += league.sport === "football" ? drivesCard(summary) : playsCard(summary, league);
     }
     const clips = gameHighlights(ev, summary);
+    state.gameClips = clips;
     const tabs = [
       { key: "stats", label: "Stats", html: stats + loading },
       ...(clips.length ? [{ key: "highlights", label: "Highlights", html: highlightsHTML(clips) }] : []),
@@ -1345,11 +1346,11 @@
 
   function highlightsHTML(items) {
     return `<div class="hl-grid">${items
-      .map((h) => {
+      .map((h, i) => {
         const href = h.kind === "yt" ? watchURL(h.id) : h.href || "#";
         const where = h.kind === "yt" && noEmbed[h.league] ? "YouTube" : h.kind === "link" ? "ESPN" : "";
         return `
-          <a class="hl-card" href="${esc(href)}" target="_blank" rel="noopener" data-hl="${h.kind}"
+          <a class="hl-card" href="${esc(href)}" target="_blank" rel="noopener" data-hl="${h.kind}" data-index="${i}"
             data-src="${esc(h.src || "")}" data-id="${esc(h.id || "")}" data-league="${esc(h.league || "")}" data-title="${esc(h.title)}" data-poster="${esc(h.thumb || "")}">
             <span class="thumb">${h.thumb ? `<img src="${esc(h.thumb)}" alt="" loading="lazy" onerror="this.remove()" />` : ""}<span class="play" aria-hidden="true"></span>${
               h.duration ? `<span class="hl-time">${clipLength(h.duration)}</span>` : ""
@@ -1361,6 +1362,58 @@
       .join("")}</div>`;
   }
 
+  // ---- the player's "More highlights" list ----
+
+  const canPlayHere = (h) => (h.kind === "clip" && !!h.src) || (h.kind === "yt" && !noEmbed[h.league]);
+  const itemHref = (h) => (h.kind === "yt" ? watchURL(h.id) : h.href || h.src || "#");
+
+  // Play item i of a list in the app's player, with the rest listed underneath.
+  function playFrom(items, i) {
+    state.playlist = { items, index: i };
+    const h = items[i];
+    if (h.kind === "clip") openClip(h.src, h.title, h.href, h.thumb);
+    else openVideo(h.id, h.title, h.league);
+  }
+
+  function renderMore() {
+    const pl = state.playlist;
+    const box = $("video-more");
+    if (!pl || pl.items.length < 2) {
+      box.innerHTML = "";
+      videoDialog.classList.remove("has-more");
+      return;
+    }
+    videoDialog.classList.add("has-more");
+    box.innerHTML = `
+      <h3>More highlights</h3>
+      ${pl.items
+        .map((h, i) => {
+          const here = canPlayHere(h);
+          const where = here ? "" : h.kind === "yt" ? "YouTube" : "ESPN";
+          return `
+            <a class="more-row${i === pl.index ? " playing" : ""}" href="${esc(itemHref(h))}" target="_blank" rel="noopener" data-more="${i}"${i === pl.index ? ' aria-current="true"' : ""}>
+              <span class="more-thumb">${h.thumb ? `<img src="${esc(h.thumb)}" alt="" loading="lazy" onerror="this.remove()" />` : ""}${
+                h.duration ? `<span class="hl-time">${clipLength(h.duration)}</span>` : ""
+              }</span>
+              <span class="more-text">
+                <span class="more-title">${esc(h.title)}</span>
+                <span class="meta-line">${esc([i === pl.index ? "Now playing" : where, h.published ? timeAgo(h.published) : ""].filter(Boolean).join(" · "))}</span>
+              </span>
+            </a>`;
+        })
+        .join("")}`;
+    box.querySelector(".playing")?.scrollIntoView({ block: "nearest" });
+  }
+
+  // When a clip ends, go on to the next one that plays in the app.
+  function playNext() {
+    const pl = state.playlist;
+    if (!pl) return;
+    for (let i = pl.index + 1; i < pl.items.length; i++) {
+      if (canPlayHere(pl.items[i])) return playFrom(pl.items, i);
+    }
+  }
+
   // ESPN clips are plain video files, so they play in the app's own player.
   function openClip(src, title, href, poster) {
     $("video-title").textContent = title;
@@ -1368,7 +1421,9 @@
     link.textContent = "Open on ESPN";
     link.href = href || src;
     $("video-box").innerHTML = `<video src="${esc(src)}" ${poster ? `poster="${esc(poster)}"` : ""} controls autoplay playsinline></video>`;
+    $("video-box").querySelector("video").addEventListener("ended", playNext);
     if (!videoDialog.open) videoDialog.showModal();
+    renderMore();
   }
 
   function hero(ev) {
@@ -2194,9 +2249,9 @@
   }
 
   // Every card is a real YouTube link; leagues that allow it play in the app instead.
-  function videoCard(v) {
+  function videoCard(v, index) {
     return `
-      <a class="video-card" href="${esc(watchURL(v.id))}" target="_blank" rel="noopener" data-video="${esc(v.id)}" data-video-title="${esc(v.title)}" data-league="${esc(v._league)}">
+      <a class="video-card" href="${esc(watchURL(v.id))}" target="_blank" rel="noopener" data-video="${esc(v.id)}" data-index="${index}" data-league="${esc(v._league)}">
         <span class="thumb"><img src="${esc(v.thumbnail || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`)}" alt="" loading="lazy" onerror="this.remove()" /><span class="play" aria-hidden="true"></span></span>
         <span class="video-title">${esc(v.title)}</span>
         <span class="meta-line">${esc([state.tabLeague.videos === "home" ? shortName(byKey[v._league]) : "", noEmbed[v._league] ? "YouTube" : "", timeAgo(v.published)].filter(Boolean).join(" · "))}</span>
@@ -2206,12 +2261,23 @@
   function videosHTML(items, league) {
     const sorted = items.slice().sort((a, b) => new Date(b.published) - new Date(a.published));
     if (!sorted.length) return '<p class="loading">No highlights right now.</p>';
-    if (league !== "home") return `<div class="video-grid">${sorted.map(videoCard).join("")}</div>`;
-    const mine = sorted.filter((v) => aboutMyTeams(v.title, v._league));
+    const mine = league === "home" ? sorted.filter((v) => aboutMyTeams(v.title, v._league)) : [];
+    const rest = sorted.filter((v) => !mine.includes(v));
+    // The player's "More highlights" list follows the same order as the page.
+    state.tabClips = [...mine, ...rest].map((v) => ({
+      kind: "yt",
+      id: v.id,
+      title: v.title,
+      thumb: v.thumbnail || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`,
+      published: v.published,
+      league: v._league,
+    }));
+    const card = (v) => videoCard(v, state.tabClips.findIndex((c) => c.id === v.id));
+    if (league !== "home") return `<div class="video-grid">${rest.map(card).join("")}</div>`;
     return `
-      ${mine.length ? `<h2 class="panel-h">Your teams</h2><div class="video-grid">${mine.map(videoCard).join("")}</div>` : '<p class="panel-note">No new videos about your teams yet. Here\'s the latest from their leagues.</p>'}
+      ${mine.length ? `<h2 class="panel-h">Your teams</h2><div class="video-grid">${mine.map(card).join("")}</div>` : '<p class="panel-note">No new videos about your teams yet. Here\'s the latest from their leagues.</p>'}
       <h2 class="panel-h">Latest</h2>
-      <div class="video-grid">${sorted.filter((v) => !mine.includes(v)).map(videoCard).join("")}</div>`;
+      <div class="video-grid">${rest.map(card).join("")}</div>`;
   }
 
   let ytAPI = null;
@@ -2243,6 +2309,7 @@
     const box = $("video-box");
     box.innerHTML = '<div id="video-player"></div>';
     if (!videoDialog.open) videoDialog.showModal();
+    renderMore();
     loadYouTubeAPI()
       .then((YT) => {
         if (!videoDialog.open) return;
@@ -2255,6 +2322,7 @@
             onError: (e) => {
               if (e.data !== 101 && e.data !== 150) return;
               markNoEmbed(league);
+              renderMore();
               box.innerHTML = `
                 <div class="video-blocked">
                   <p>${esc(byKey[league]?.name || "This league")} only lets this video play on YouTube.</p>
@@ -2399,12 +2467,22 @@
     // Leagues that block in-app playback just follow the link to YouTube.
     if (video && !noEmbed[video.dataset.league]) {
       e.preventDefault();
-      openVideo(video.dataset.video, video.dataset.videoTitle, video.dataset.league);
+      playFrom(state.tabClips, Number(video.dataset.index));
     }
     if (e.target.closest("[data-retry]")) loadTab(true);
   });
 
   $("close-video").addEventListener("click", () => videoDialog.close());
+  $("video-more").addEventListener("click", (e) => {
+    const row = e.target.closest("[data-more]");
+    const pl = state.playlist;
+    if (!row || !pl) return;
+    const i = Number(row.dataset.more);
+    // Videos that only play elsewhere just follow their link.
+    if (!canPlayHere(pl.items[i])) return;
+    e.preventDefault();
+    playFrom(pl.items, i);
+  });
   videoDialog.addEventListener("click", (e) => {
     if (e.target === videoDialog) videoDialog.close();
   });
@@ -2417,6 +2495,8 @@
     }
     player = null;
     $("video-box").innerHTML = "";
+    state.playlist = null;
+    renderMore();
   });
 
   toolbarEl.addEventListener("click", (e) => {
@@ -2466,13 +2546,11 @@
   detailEl.addEventListener("click", (e) => {
     const hl = e.target.closest("[data-hl]");
     if (hl) {
-      const { hl: kind, src, id, league, title, poster } = hl.dataset;
-      if (kind === "clip" && src) {
+      const i = Number(hl.dataset.index);
+      const clips = state.gameClips || [];
+      if (clips[i] && canPlayHere(clips[i])) {
         e.preventDefault();
-        openClip(src, title, hl.getAttribute("href"), poster);
-      } else if (kind === "yt" && !noEmbed[league]) {
-        e.preventDefault();
-        openVideo(id, title, league);
+        playFrom(clips, i);
       }
       return;
     }
