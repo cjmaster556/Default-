@@ -88,7 +88,7 @@
       competitions: [
         {
           competitors: [home, away],
-          broadcasts: [{ names: [extra.tv || "ESPN"] }],
+          broadcasts: [{ names: [].concat(extra.tv || "ESPN") }],
           venue: { fullName: extra.venue || "Stadium", address: extra.address || {} },
           ...(extra.situation ? { situation: extra.situation } : {}),
           ...(extra.odds ? { odds: [extra.odds] } : {}),
@@ -157,13 +157,13 @@
           displayClock: "0:00",
           period: 2,
           type: { state: "in", completed: false, detail: "Halftime", shortDetail: "Halftime" },
-        }, { tv: "FOX" }),
+        }, { tv: "Prime Video" }),
         event("403", side("away", t("nfl", "SF"), 24, "4-2", [7, 3, 7, 7], { winner: false }), side("home", t("nfl", "DET"), 31, "5-1", [14, 7, 0, 10], { winner: true }), final(), {
           tv: "FOX",
           date: hoursFromNow(-5),
         }),
         event("404", side("away", t("nfl", "CIN"), null, "3-3"), side("home", t("nfl", "BAL"), null, "4-2"), scheduled(), {
-          tv: "NBC",
+          tv: ["NBC", "Peacock"],
           date: hoursFromNow(4),
           odds: { details: "BAL -3.5", overUnder: 48.5 },
         }),

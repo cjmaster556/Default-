@@ -1426,6 +1426,52 @@
     renderMore();
   }
 
+  // ---- where to watch ----
+
+  // The app that carries a game, from the channel names ESPN lists. Streaming
+  // services come first so "ESPN+" isn't mistaken for the ESPN channel.
+  const WATCH_SERVICES = {
+    yttv: { label: "YouTube TV", url: "https://tv.youtube.com/" },
+    prime: { label: "Prime Video", url: "https://www.primevideo.com/" },
+    peacock: { label: "Peacock", url: "https://www.peacocktv.com/" },
+    netflix: { label: "Netflix", url: "https://www.netflix.com/" },
+    appletv: { label: "Apple TV", url: "https://tv.apple.com/" },
+    espnapp: { label: "ESPN", url: "https://www.espn.com/watch/" },
+    max: { label: "Max", url: "https://www.max.com/" },
+    youtube: { label: "YouTube", url: "https://www.youtube.com/" },
+  };
+  const WATCH_RULES = [
+    [/prime/, "prime"],
+    [/peacock/, "peacock"],
+    [/netflix/, "netflix"],
+    [/apple/, "appletv"],
+    [/espn\+|espn plus/, "espnapp"],
+    [/^(hbo )?max$/, "max"],
+    [/^youtube$/, "youtube"],
+    // Channels in YouTube TV's lineup.
+    [/^(cbs|fox|nbc|abc|espn|fs1|fs2|fox sports|nfl net|nfln|nba tv|tnt|tbs|trutv|mlb net|nhl net|btn|big ten|sec ?n|acc ?n|usa|golf)/, "yttv"],
+  ];
+
+  function watchButtons(comp) {
+    const names = (comp.broadcasts || []).flatMap((b) => b.names || []);
+    const services = [];
+    for (const name of names) {
+      const n = String(name).toLowerCase().trim();
+      const hit = WATCH_RULES.find(([re]) => re.test(n));
+      if (hit && !services.includes(hit[1])) services.push(hit[1]);
+    }
+    // YouTube TV first when the game is on regular TV, then any streaming option.
+    services.sort((a, b) => Number(b === "yttv") - Number(a === "yttv"));
+    if (!services.length) return "";
+    return `<div class="gd-watch">${services
+      .slice(0, 2)
+      .map((k) => {
+        const svc = WATCH_SERVICES[k];
+        return `<a class="watch-btn" href="${svc.url}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" /></svg>Watch on ${esc(svc.label)}</a>`;
+      })
+      .join("")}</div>`;
+  }
+
   function hero(ev) {
     const league = byKey[ev._league];
     const comp = ev.competitions?.[0] || {};
@@ -1483,6 +1529,7 @@
         </div>
         ${st !== "pre" ? lineScore(league, away, home, st) : ""}
         ${now ? `<div class="gd-now">${now}</div>` : ""}
+        ${st !== "post" ? watchButtons(comp) : ""}
         ${tvLine ? `<p class="gd-tv">${esc(tvLine)}</p>` : ""}
       </div>`;
   }
