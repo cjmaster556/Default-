@@ -16,6 +16,8 @@
 
   const FAV_KEY = "scoreline.favorites";
   const ALERTS_KEY = "scoreline.alerts";
+  const SETTINGS_KEY = "scoreline.alertSettings";
+  const REMIND_KEY = "scoreline.reminders";
 
   // Refresh cadence: fast while games are live, slower near start time, lazy otherwise.
   const REFRESH_LIVE = 5 * 1000;
@@ -46,6 +48,8 @@
   const tabbarEl = $("tabbar");
   const videoDialog = $("video-dialog");
   const toastEl = $("toast");
+  const alertsDialog = $("alerts-dialog");
+  const alertsBody = $("alerts-body");
 
   const state = {
     view: "home",
@@ -65,6 +69,8 @@
     tabVariant: {}, // "standings:nfl" -> "division" | "conference"
     tabData: {}, // "tab:league:variant" -> { data, error, at, loading }
     alerts: loadAlerts(),
+    alertSettings: loadJSON(SETTINGS_KEY, {}),
+    reminders: new Map(loadJSON(REMIND_KEY, []).map((r) => [r.key, r])), // event key -> { key, league, id, date, name }
     alertSeen: new Map(), // event key -> { a, h, st } as of the last check
     seq: 0,
     timer: null,
@@ -87,6 +93,22 @@
       localStorage.setItem(FAV_KEY, JSON.stringify([...state.favorites.values()]));
     } catch {
       /* storage unavailable; follows last for this visit only */
+    }
+  }
+
+  function loadJSON(key, fallback) {
+    try {
+      return JSON.parse(localStorage.getItem(key)) ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function saveJSON(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      /* storage unavailable; lasts for this visit only */
     }
   }
 
@@ -508,16 +530,111 @@
 
   // Keep checking in the background while one of your teams is playing or about to.
   function alertsWatching() {
-    if (!state.alerts || !state.favorites.size) return false;
+    if (!state.alerts || (!state.favorites.size && !state.reminders.size)) return false;
     const soon = Date.now() + 30 * 60 * 1000;
-    return state.home.events.some((ev) => gameState(ev) === "in" || (gameState(ev) === "pre" && new Date(ev.date).getTime() < soon));
+    return alertEvents().some((ev) => gameState(ev) === "in" || (gameState(ev) === "pre" && new Date(ev.date).getTime() < soon));
+  }
+
+  // Games the app can alert about while it's open: your teams' and the ones you set reminders for.
+  function alertEvents() {
+    const seen = new Map();
+    for (const ev of [...state.home.events, ...currentEvents()]) {
+      if (isFavGame(ev) || state.reminders.has(ev._key)) seen.set(ev._key, ev);
+    }
+    return [...seen.values()];
+  }
+
+  // ---- alert settings ----
+
+  const DEFAULT_SETTINGS = { start: true, scores: "all", close: true, redzone: false, finals: true, live: false, quiet: null };
+  const alertSettings = () => ({ ...DEFAULT_SETTINGS, ...state.alertSettings });
+  const timeZone = () => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch {
+      return "UTC";
+    }
+  };
+
+  function setAlertSetting(key, value) {
+    state.alertSettings = { ...alertSettings(), [key]: value };
+    saveJSON(SETTINGS_KEY, state.alertSettings);
+    schedulePushSync();
+  }
+
+  function inQuietHours() {
+    const q = alertSettings().quiet;
+    if (!q) return false;
+    const d = new Date();
+    const t = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    return q.from <= q.to ? t >= q.from && t < q.to : t >= q.from || t < q.to;
+  }
+
+  const CLOSE_MARGIN = { football: 8, basketball: 10, baseball: 2, hockey: 1 };
+
+  // ---- game reminders ----
+
+  function saveReminders() {
+    saveJSON(REMIND_KEY, [...state.reminders.values()]);
+  }
+
+  // Drop reminders for games that finished a while ago.
+  function pruneReminders() {
+    const cutoff = Date.now() - 12 * 3600000;
+    let changed = false;
+    for (const [k, r] of state.reminders) {
+      if (Date.parse(r.date) < cutoff) {
+        state.reminders.delete(k);
+        changed = true;
+      }
+    }
+    if (changed) saveReminders();
+  }
+
+  async function toggleReminder(key) {
+    if (state.reminders.has(key)) {
+      state.reminders.delete(key);
+      saveReminders();
+      toast("Reminder removed");
+      schedulePushSync();
+      return;
+    }
+    const ev = findEvent(key);
+    if (!ev) return;
+    const { away, home } = sides(ev.competitions?.[0]);
+    state.reminders.set(key, {
+      key,
+      league: ev._league,
+      id: String(ev.id),
+      date: ev.date,
+      name: `${away?.team?.abbreviation || "Away"} at ${home?.team?.abbreviation || "Home"}`,
+    });
+    saveReminders();
+    // Reminders need alerts on; turn them on now if they aren't.
+    if (!state.alerts) {
+      await toggleAlerts(true);
+      if (!state.alerts) {
+        state.reminders.delete(key);
+        saveReminders();
+        return;
+      }
+    } else schedulePushSync();
+    toast(`We'll let you know when ${state.reminders.get(key).name} starts`);
+  }
+
+  function remindButton(ev) {
+    const on = state.reminders.has(ev._key);
+    return `<button class="remind-btn${on ? " on" : ""}" data-remind="${esc(ev._key)}" aria-pressed="${on}"
+      aria-label="${on ? "Remove reminder" : "Remind me when this game starts"}">${BELL_SVG}</button>`;
   }
 
   function checkAlerts() {
     // When the alerts server is sending alerts, the app doesn't send its own copies.
-    const notifyOK = state.alerts && !state.pushActive && alertsSupported() && Notification.permission === "granted";
-    for (const ev of state.home.events) {
-      if (!isFavGame(ev)) continue;
+    const notifyOK = state.alerts && !state.pushActive && alertsSupported() && Notification.permission === "granted" && !inQuietHours();
+    const set = alertSettings();
+    for (const ev of alertEvents()) {
+      const reminded = state.reminders.has(ev._key);
+      const followed = isFavGame(ev);
       const comp = ev.competitions?.[0] || {};
       const { away, home } = sides(comp);
       if (!away || !home) continue;
@@ -533,19 +650,24 @@
       const fav = (c) => state.favorites.has(`${ev._league}:${c.team?.id}`);
       const name = (c) => c.team?.shortDisplayName || c.team?.abbreviation;
 
-      if (prev.st === "pre" && st === "in") {
+      const sport = byKey[ev._league]?.sport;
+      const close = Math.abs(now.a - now.h) <= (CLOSE_MARGIN[sport] ?? 8);
+      const wantScores = set.scores === "all" || (set.scores === "close" && close);
+
+      if (prev.st === "pre" && st === "in" && (reminded || (followed && set.start))) {
         notify(ev, `${name(away)} at ${name(home)} has started`, status);
       }
       for (const [c, before, after] of [
         [away, prev.a, now.a],
         [home, prev.h, now.h],
       ]) {
-        if (fav(c) && after > before) {
+        // Baskets come too fast to announce one by one.
+        if (fav(c) && after > before && wantScores && sport !== "basketball") {
           const last = comp.situation?.lastPlay?.text;
           notify(ev, `${name(c)} score!`, [`${line} · ${status}`, last].filter(Boolean).join("\n"));
         }
       }
-      if (prev.st === "in" && st === "post") {
+      if (prev.st === "in" && st === "post" && followed && set.finals) {
         const winner = comp.competitors?.find((c) => c.winner);
         notify(ev, winner ? `Final: ${name(winner)} win` : "Final", line);
       }
@@ -572,6 +694,9 @@
 
   const ALERTS_SERVER = String(window.SCORELINE_CONFIG?.alertsServer || "").replace(/\/$/, "");
   const pushSupported = () => !!ALERTS_SERVER && "PushManager" in window && "serviceWorker" in navigator;
+
+  const BELL_SVG =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5.5-6.84V3.5a1.5 1.5 0 0 0-3 0v.66A7 7 0 0 0 5 11v5l-2 2v1h18v-1Z"/></svg>';
 
   const fromB64url = (str) => {
     const s = str.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((str.length + 3) % 4);
@@ -604,7 +729,9 @@
     }
     sub ||= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
     const teams = [...state.favorites.values()].map((f) => ({ league: f.league, id: f.id }));
-    await postServer("/subscribe", { subscription: sub.toJSON(), teams });
+    pruneReminders();
+    const reminders = [...state.reminders.values()].map((r) => ({ league: r.league, id: r.id, date: r.date }));
+    await postServer("/subscribe", { subscription: sub.toJSON(), teams, reminders, settings: { ...alertSettings(), tz: timeZone() } });
     state.pushActive = true;
     return sub;
   }
@@ -631,15 +758,17 @@
     pushSyncTimer = setTimeout(() => syncPush().catch(() => {}), 1500);
   }
 
-  async function toggleAlerts() {
-    if (state.alerts) {
+  async function toggleAlerts(turnOn = !state.alerts) {
+    if (!turnOn) {
       state.alerts = false;
       saveAlerts();
       renderAlertsBtn();
       toast("Score alerts off");
       stopPush();
+      renderAlertSettings();
       return;
     }
+    if (state.alerts) return;
     let perm = Notification.permission;
     if (perm === "default") perm = await Notification.requestPermission();
     if (perm !== "granted") {
@@ -649,6 +778,7 @@
     state.alerts = true;
     saveAlerts();
     renderAlertsBtn();
+    renderAlertSettings();
     refresh();
     if (!pushSupported()) {
       toast(state.favorites.size ? "Score alerts on for your teams" : "Score alerts on. Follow some teams to get them.");
@@ -672,6 +802,118 @@
     alertsBtn.setAttribute("aria-label", state.alerts ? "Score alerts on" : "Score alerts off");
     alertsBtn.title = state.alerts ? "Score alerts on" : "Turn on score alerts";
   }
+
+  // The Alerts sheet: what to be told about, quiet hours and reminders.
+  function openAlertSettings() {
+    if (!alertsDialog.open) alertsDialog.showModal();
+    renderAlertSettings();
+  }
+
+  function renderAlertSettings() {
+    if (!alertsDialog.open) return;
+    const set = alertSettings();
+    const on = state.alerts;
+    const sw = (key, checked, label, desc = "", disabled = !on) => `
+      <label class="set-row${disabled ? " off" : ""}">
+        <span class="set-text"><span class="set-label">${label}</span>${desc ? `<span class="set-desc">${desc}</span>` : ""}</span>
+        <input type="checkbox" class="switch" data-setting="${key}"${checked ? " checked" : ""}${disabled ? " disabled" : ""} />
+      </label>`;
+    const seg = (key, value, options) => `
+      <div class="seg" role="radiogroup">
+        ${options.map(([v, label]) => `<button role="radio" aria-checked="${v === value}" class="${v === value ? "on" : ""}" data-seg="${key}" data-value="${v}"${on ? "" : " disabled"}>${label}</button>`).join("")}
+      </div>`;
+    const reminders = [...state.reminders.values()].sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
+    const when = (r) =>
+      new Date(r.date).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    alertsBody.innerHTML = `
+      <div class="set-group">
+        ${sw("alerts", on, "Score alerts", state.favorites.size ? `For your ${state.favorites.size} team${state.favorites.size === 1 ? "" : "s"}, even when the app is closed` : "Follow some teams to get alerts", false)}
+      </div>
+      <h3 class="set-head">Tell me about</h3>
+      <div class="set-group">
+        ${sw("start", set.start, "Game starts")}
+        <div class="set-row${on ? "" : " off"}">
+          <span class="set-text"><span class="set-label">Scores</span><span class="set-desc">Basketball sends quarter scores instead of every basket</span></span>
+        </div>
+        <div class="set-row seg-row">${seg("scores", set.scores, [["all", "Every score"], ["close", "Close games"], ["off", "Off"]])}</div>
+        ${sw("close", set.close, "Close finishes", "One alert when a game is close near the end")}
+        ${sw("redzone", set.redzone, "Red zone", "When your team gets inside the 20 (football)")}
+        ${sw("finals", set.finals, "Final scores")}
+      </div>
+      <h3 class="set-head">Live score</h3>
+      <div class="set-group">
+        ${sw("live", set.live, "Live score notification", "One notification per game that updates quietly as it's played, like a Live Activity")}
+      </div>
+      <h3 class="set-head">Quiet hours</h3>
+      <div class="set-group">
+        ${sw("quiet", !!set.quiet, "Quiet hours", "No alert sounds at these times. The live score still updates.")}
+        ${
+          set.quiet
+            ? `<div class="set-row time-row${on ? "" : " off"}">
+                <label>From <input type="time" data-quiet="from" value="${esc(set.quiet.from)}"${on ? "" : " disabled"} /></label>
+                <label>To <input type="time" data-quiet="to" value="${esc(set.quiet.to)}"${on ? "" : " disabled"} /></label>
+              </div>`
+            : ""
+        }
+      </div>
+      <h3 class="set-head">Reminders</h3>
+      <div class="set-group">
+        ${
+          reminders.length
+            ? reminders
+                .map(
+                  (r) => `<div class="set-row">
+                    <span class="set-text"><span class="set-label">${esc(r.name)}</span><span class="set-desc">${esc(byKey[r.league]?.name || "")} · ${esc(when(r))}</span></span>
+                    <button class="pill-btn" data-unremind="${esc(r.key)}">Remove</button>
+                  </div>`
+                )
+                .join("")
+            : `<p class="set-row set-desc">Tap the bell on any upcoming game to get an alert when it starts.</p>`
+        }
+      </div>
+      ${on && pushSupported() ? `<button class="pill-btn test-btn" data-test-alert>Send a test alert</button>` : ""}`;
+  }
+
+  alertsBody.addEventListener("change", (e) => {
+    const key = e.target.dataset.setting;
+    if (key === "alerts") {
+      toggleAlerts(e.target.checked);
+      return;
+    }
+    if (key === "quiet") {
+      setAlertSetting("quiet", e.target.checked ? { from: "22:00", to: "08:00" } : null);
+    } else if (key) {
+      setAlertSetting(key, e.target.checked);
+    }
+    const q = e.target.dataset.quiet;
+    if (q && /^\d\d:\d\d$/.test(e.target.value)) setAlertSetting("quiet", { ...alertSettings().quiet, [q]: e.target.value });
+    renderAlertSettings();
+  });
+
+  alertsBody.addEventListener("click", async (e) => {
+    const seg = e.target.closest("[data-seg]");
+    if (seg) {
+      setAlertSetting(seg.dataset.seg, seg.dataset.value);
+      renderAlertSettings();
+      return;
+    }
+    const un = e.target.closest("[data-unremind]");
+    if (un) {
+      await toggleReminder(un.dataset.unremind);
+      renderAlertSettings();
+      render();
+      return;
+    }
+    if (e.target.closest("[data-test-alert]")) {
+      try {
+        const sub = await syncPush();
+        await postServer("/test", { endpoint: sub.endpoint });
+        toast("A test alert is on its way");
+      } catch {
+        toast("Couldn't reach the alerts server");
+      }
+    }
+  });
 
   let toastTimer = null;
   function toast(text) {
@@ -1129,6 +1371,7 @@
           <div class="mid">
             <span class="status${st === "in" ? " live" : ""}">${statusHTML(ev)}</span>
             ${tv && st !== "post" ? `<span class="tv">${esc(tv)}</span>` : ""}
+            ${st === "pre" && alertsSupported() ? remindButton(ev) : ""}
           </div>
           ${scoreCell(home, comp, league, st, sit)}
           ${side(home, comp, league, st, sit)}
@@ -1667,6 +1910,13 @@
         ${st !== "pre" ? lineScore(league, away, home, st) : ""}
         ${now ? `<div class="gd-now">${now}</div>` : ""}
         ${st !== "post" ? watchButtons(comp) : ""}
+        ${
+          st === "pre" && alertsSupported()
+            ? `<button class="remind-pill${state.reminders.has(ev._key) ? " on" : ""}" data-remind="${esc(ev._key)}">${BELL_SVG}${
+                state.reminders.has(ev._key) ? "Reminder set" : "Remind me"
+              }</button>`
+            : ""
+        }
         ${tvLine ? `<p class="gd-tv">${esc(tvLine)}</p>` : ""}
       </div>`;
   }
@@ -2709,7 +2959,14 @@
     if (e.target.id === "week-select") goToWeek(Number(e.target.value));
   });
 
-  gamesEl.addEventListener("click", (e) => {
+  gamesEl.addEventListener("click", async (e) => {
+    const bell = e.target.closest("[data-remind]");
+    if (bell) {
+      e.stopPropagation();
+      await toggleReminder(bell.dataset.remind);
+      render();
+      return;
+    }
     const c = e.target.closest(".card");
     if (c) openGame(c.dataset.key);
   });
@@ -2736,6 +2993,14 @@
         e.preventDefault();
         playFrom(clips, i);
       }
+      return;
+    }
+    const bell = e.target.closest("[data-remind]");
+    if (bell) {
+      toggleReminder(bell.dataset.remind).then(() => {
+        renderDetail();
+        render();
+      });
       return;
     }
     const tab = e.target.closest("[data-tab]");
@@ -2858,7 +3123,11 @@
     else if (!alertsWatching()) clearTimeout(state.timer);
   });
 
-  alertsBtn.addEventListener("click", toggleAlerts);
+  alertsBtn.addEventListener("click", openAlertSettings);
+  $("close-alerts").addEventListener("click", () => alertsDialog.close());
+  alertsDialog.addEventListener("click", (e) => {
+    if (e.target === alertsDialog) alertsDialog.close();
+  });
 
   // ---------- install ----------
 

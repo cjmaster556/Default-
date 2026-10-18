@@ -1,7 +1,8 @@
 // Scoreline alerts server. Every minute it checks ESPN for games involving
-// the teams people follow and sends a push notification when one of those
-// teams scores, or when their game starts or ends, so alerts arrive with the
-// app closed. It also fetches standings, news and league highlight videos
+// the teams people follow (or games they asked to be reminded about) and
+// sends push notifications, as each phone's alert settings ask: game starts,
+// scores, red zone trips, close finishes, finals, and a live score
+// notification that updates in place, so alerts arrive with the app closed. It also fetches standings, news and league highlight videos
 // for the app, which browsers can't always load from ESPN and YouTube directly.
 
 import { generateVapidKeys, sendPush } from "./push.js";
@@ -71,11 +72,18 @@ async function route(request, env) {
   const body = await request.json();
   if (url.pathname === "/subscribe") return subscribe(env, body);
   if (url.pathname === "/unsubscribe") {
-    await env.DB.prepare("DELETE FROM subs WHERE endpoint = ?").bind(checkEndpoint(body.endpoint)).run();
+    await forget(env, checkEndpoint(body.endpoint));
     return json({ ok: true });
   }
   if (url.pathname === "/test") return sendTest(env, body);
   return json({ error: "Not found" }, 404);
+}
+
+async function forget(env, endpoint) {
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM subs WHERE endpoint = ?").bind(endpoint),
+    env.DB.prepare("DELETE FROM prefs WHERE endpoint = ?").bind(endpoint),
+  ]);
 }
 
 function checkEndpoint(endpoint) {
@@ -94,13 +102,48 @@ async function subscribe(env, body) {
     .slice(0, 200)
     .filter((t) => LEAGUES[t?.league] && /^\w+$/.test(String(t.id)))
     .map((t) => ({ key: `${t.league}:${t.id}`, league: t.league, id: String(t.id) }));
-  await env.DB.prepare(
-    `INSERT INTO subs (endpoint, p256dh, auth, teams, created) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth, teams = excluded.teams`
-  )
-    .bind(endpoint, p256dh, auth, JSON.stringify(teams), Date.now())
-    .run();
-  return json({ ok: true, teams: teams.length });
+  const reminders = (Array.isArray(body.reminders) ? body.reminders : [])
+    .filter((r) => LEAGUES[r?.league] && /^\d+$/.test(String(r.id)) && Date.parse(r.date) > Date.now() - 86400000)
+    .slice(0, 100)
+    .map((r) => ({ key: `${r.league}:${r.id}`, league: r.league, id: String(r.id), date: new Date(r.date).toISOString() }));
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO subs (endpoint, p256dh, auth, teams, created) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth, teams = excluded.teams`
+    ).bind(endpoint, p256dh, auth, JSON.stringify(teams), Date.now()),
+    env.DB.prepare(
+      `INSERT INTO prefs (endpoint, settings, reminders) VALUES (?, ?, ?)
+       ON CONFLICT(endpoint) DO UPDATE SET settings = excluded.settings, reminders = excluded.reminders`
+    ).bind(endpoint, JSON.stringify(cleanSettings(body.settings)), JSON.stringify(reminders)),
+  ]);
+  return json({ ok: true, teams: teams.length, reminders: reminders.length });
+}
+
+// What each phone wants to hear about. Missing values fall back to these.
+const DEFAULT_SETTINGS = { start: true, scores: "all", close: true, redzone: false, finals: true, live: false, quiet: null, tz: "UTC" };
+
+function cleanSettings(raw) {
+  const s = { ...DEFAULT_SETTINGS };
+  if (!raw || typeof raw !== "object") return s;
+  for (const k of ["start", "close", "redzone", "finals", "live"]) if (typeof raw[k] === "boolean") s[k] = raw[k];
+  if (["all", "close", "off"].includes(raw.scores)) s.scores = raw.scores;
+  const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
+  if (raw.quiet && hhmm.test(raw.quiet.from) && hhmm.test(raw.quiet.to)) s.quiet = { from: raw.quiet.from, to: raw.quiet.to };
+  try {
+    if (typeof raw.tz === "string") {
+      new Intl.DateTimeFormat("en-US", { timeZone: raw.tz });
+      s.tz = raw.tz;
+    }
+  } catch {}
+  return s;
+}
+
+// True during this phone's quiet hours, in its own time zone.
+function isQuiet(settings, now = new Date()) {
+  const q = settings.quiet;
+  if (!q) return false;
+  const local = new Intl.DateTimeFormat("en-GB", { timeZone: settings.tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(now);
+  return q.from <= q.to ? local >= q.from && local < q.to : local >= q.from || local < q.to;
 }
 
 async function sendTest(env, body) {
@@ -270,15 +313,15 @@ async function vapidKeys(env) {
   return JSON.parse(saved.v);
 }
 
-async function deliver(env, sub, message) {
+async function deliver(env, sub, message, opts) {
   let status;
   try {
-    status = await sendPush(sub, message, await vapidKeys(env), SUBJECT);
+    status = await sendPush(sub, message, await vapidKeys(env), SUBJECT, opts);
   } catch {
     return 0;
   }
   // The browser dropped this subscription (app uninstalled, notifications reset).
-  if (status === 404 || status === 410) await env.DB.prepare("DELETE FROM subs WHERE endpoint = ?").bind(sub.endpoint).run();
+  if (status === 404 || status === 410) await forget(env, sub.endpoint);
   return status;
 }
 
@@ -292,7 +335,10 @@ async function runChecks(env) {
     await new Promise((r) => setTimeout(r, Number(env.SECOND_PASS_MS ?? 28000)));
     await checkOnce(env);
   }
-  await env.DB.prepare("DELETE FROM games WHERE updated < ?").bind(Date.now() - 3 * 86400000).run();
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM games WHERE updated < ?").bind(Date.now() - 3 * 86400000),
+    env.DB.prepare("DELETE FROM gamex WHERE updated < ?").bind(Date.now() - 3 * 86400000),
+  ]);
   // Every five minutes, save any new league videos, and drop old ones.
   if (new Date().getUTCMinutes() % 5 === 0) {
     await Promise.allSettled(Object.keys(CHANNELS).map((league) => refreshVideos(env, league)));
@@ -316,17 +362,63 @@ function sides(comp) {
 const num = (v) => Number(typeof v === "object" ? v?.value : v) || 0;
 const teamName = (c) => c?.team?.shortDisplayName || c?.team?.abbreviation || "";
 
+const SPORT = { nfl: "football", cfb: "football", nba: "basketball", wnba: "basketball", mlb: "baseball", nhl: "hockey" };
+
+// Is the game close enough that a score is worth an alert in "close games only" mode?
+function isClose(league, margin) {
+  return margin <= { football: 8, basketball: 10, baseball: 2, hockey: 1 }[SPORT[league]];
+}
+
+// Late in a close game: the moment worth one heads-up alert.
+function isLateClose(league, status, margin) {
+  const period = status?.period || 0;
+  const clock = Number(status?.clock ?? Infinity);
+  switch (SPORT[league]) {
+    case "football":
+      return period >= 4 && clock <= 300 && margin <= 8;
+    case "basketball":
+      return period >= 4 && clock <= 300 && margin <= 6;
+    case "hockey":
+      return period >= 3 && clock <= 600 && margin <= 1;
+    case "baseball":
+      return period >= 8 && margin <= 2;
+  }
+  return false;
+}
+
+const ordinal = (n) => n + ({ 1: "st", 2: "nd", 3: "rd" }[n] || "th");
+
 async function checkOnce(env) {
-  const subs = (await env.DB.prepare("SELECT endpoint, p256dh, auth, teams FROM subs").all()).results || [];
+  const subs =
+    (
+      await env.DB.prepare(
+        "SELECT s.endpoint, s.p256dh, s.auth, s.teams, p.settings, p.reminders FROM subs s LEFT JOIN prefs p ON p.endpoint = s.endpoint"
+      ).all()
+    ).results || [];
   if (!subs.length) return false;
-  for (const s of subs) s.follows = new Set(JSON.parse(s.teams || "[]").map((t) => t.key));
-  const leagues = new Set(subs.flatMap((s) => [...s.follows].map((k) => k.split(":")[0])).filter((l) => LEAGUES[l]));
+  const now = Date.now();
+  for (const s of subs) {
+    s.follows = new Set(JSON.parse(s.teams || "[]").map((t) => t.key));
+    s.settings = cleanSettings(JSON.parse(s.settings || "{}"));
+    s.reminders = JSON.parse(s.reminders || "[]");
+    s.reminds = new Set(s.reminders.map((r) => r.key));
+    s.quiet = isQuiet(s.settings);
+  }
+  const leagues = new Set(subs.flatMap((s) => [...s.follows].map((k) => k.split(":")[0])));
+  // A reminded game's league only needs watching around its start time.
+  for (const s of subs) {
+    for (const r of s.reminders) {
+      const t = Date.parse(r.date);
+      if (t - now < 20 * 60000 && now - t < 8 * 3600000) leagues.add(r.league);
+    }
+  }
+  for (const l of leagues) if (!LEAGUES[l]) leagues.delete(l);
   const known = new Map(((await env.DB.prepare("SELECT key, a, h, st FROM games").all()).results || []).map((g) => [g.key, g]));
+  const extras = new Map(((await env.DB.prepare("SELECT key, x FROM gamex").all()).results || []).map((g) => [g.key, JSON.parse(g.x)]));
 
   let busy = false;
   const sends = [];
   const writes = [];
-  const now = Date.now();
 
   const boards = await Promise.all(
     [...leagues].map(async (league) => {
@@ -348,49 +440,120 @@ async function checkOnce(env) {
       if (!away?.team || !home?.team) continue;
       const ka = `${league}:${away.team.id}`;
       const kh = `${league}:${home.team.id}`;
-      const followers = subs.filter((s) => s.follows.has(ka) || s.follows.has(kh));
+      const key = `${league}:${ev.id}`;
+      const followers = subs.filter((s) => s.follows.has(ka) || s.follows.has(kh) || s.reminds.has(key));
       if (!followers.length) continue;
 
       const st = ev.status?.type?.state || "pre";
       if (st === "in" || (st === "pre" && new Date(ev.date).getTime() - now < 10 * 60000)) busy = true;
       const cur = { a: num(away.score), h: num(home.score), st };
-      const key = `${league}:${ev.id}`;
       const prev = known.get(key);
-      if (prev && prev.a === cur.a && prev.h === cur.h && prev.st === cur.st) continue;
-      writes.push(
-        env.DB.prepare(
-          `INSERT INTO games (key, a, h, st, updated) VALUES (?, ?, ?, ?, ?)
-           ON CONFLICT(key) DO UPDATE SET a = excluded.a, h = excluded.h, st = excluded.st, updated = excluded.updated`
-        ).bind(key, cur.a, cur.h, cur.st, now)
-      );
-      known.set(key, { key, ...cur });
+      const x0 = extras.get(key) || {};
+      const sit = comp.situation || {};
+      const detail = ev.status?.type?.shortDetail || "";
+      const x = {
+        detail,
+        period: ev.status?.period || 0,
+        rz: SPORT[league] === "football" && sit.isRedZone ? String(sit.possession || "") : "",
+        close: !!x0.close,
+      };
+      const scoreChanged = !prev || prev.a !== cur.a || prev.h !== cur.h || prev.st !== cur.st;
+      const margin = Math.abs(cur.a - cur.h);
+      const seen = "detail" in x0;
+      // Raise the close-game flag once; the first look only notes it.
+      const lateClose = st === "in" && !x.close && isLateClose(league, ev.status, margin);
+      if (lateClose) x.close = true;
+      const extraChanged = x.detail !== x0.detail || x.period !== x0.period || x.rz !== x0.rz || x.close !== !!x0.close;
+      if (!scoreChanged && !extraChanged) continue;
+
+      if (scoreChanged) {
+        writes.push(
+          env.DB.prepare(
+            `INSERT INTO games (key, a, h, st, updated) VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(key) DO UPDATE SET a = excluded.a, h = excluded.h, st = excluded.st, updated = excluded.updated`
+          ).bind(key, cur.a, cur.h, cur.st, now)
+        );
+        known.set(key, { key, ...cur });
+      }
+      if (extraChanged) {
+        writes.push(
+          env.DB.prepare(
+            `INSERT INTO gamex (key, x, updated) VALUES (?, ?, ?)
+             ON CONFLICT(key) DO UPDATE SET x = excluded.x, updated = excluded.updated`
+          ).bind(key, JSON.stringify(x), now)
+        );
+        extras.set(key, x);
+      }
       // The first look at a game only sets the baseline.
       if (!prev) continue;
 
       const line = `${away.team.abbreviation} ${cur.a} – ${cur.h} ${home.team.abbreviation}`;
-      const status = ev.status?.type?.shortDetail || "";
       const url = `${SUBJECT}#${league}`;
-      const messages = [];
+      const last = sit.lastPlay?.text;
+      // Each alert says who it's for: followers of these teams whose settings want it.
+      const alerts = [];
+      const both = [ka, kh];
       if (prev.st === "pre" && cur.st === "in") {
-        messages.push({ to: [ka, kh], title: `${teamName(away)} at ${teamName(home)} has started`, body: status });
+        alerts.push({ to: both, want: (s) => s.settings.start, reminder: true, title: `${teamName(away)} at ${teamName(home)} has started`, body: detail });
       }
-      for (const [c, k, before, after] of [
-        [away, ka, prev.a, cur.a],
-        [home, kh, prev.h, cur.h],
-      ]) {
-        if (after > before && cur.st !== "post") {
-          const last = comp.situation?.lastPlay?.text;
-          messages.push({ to: [k], title: `${teamName(c)} score!`, body: [`${line} · ${status}`, last].filter(Boolean).join("\n") });
+      if (SPORT[league] === "basketball") {
+        // Baskets come too fast to announce one by one; sum up each quarter instead.
+        if (seen && x.period > x0.period && x0.period > 0 && cur.st === "in") {
+          const n = x0.period;
+          const label = n === 2 ? "Halftime" : n <= 4 ? `End of the ${ordinal(n)}` : "End of overtime";
+          alerts.push({ to: both, want: (s) => s.settings.scores === "all" || (s.settings.scores === "close" && isClose(league, margin)), title: label, body: line });
+        }
+      } else {
+        for (const [c, k, before, after] of [
+          [away, ka, prev.a, cur.a],
+          [home, kh, prev.h, cur.h],
+        ]) {
+          if (after > before && cur.st !== "post") {
+            alerts.push({
+              to: [k],
+              want: (s) => s.settings.scores === "all" || (s.settings.scores === "close" && isClose(league, margin)),
+              title: `${teamName(c)} score!`,
+              body: [`${line} · ${detail}`, last].filter(Boolean).join("\n"),
+            });
+          }
         }
       }
-      if (prev.st !== "post" && cur.st === "post") {
+      if (seen && x.rz && x.rz !== x0.rz && cur.st === "in") {
+        const c = [away, home].find((t) => String(t.team.id) === x.rz);
+        if (c) {
+          alerts.push({
+            to: [`${league}:${c.team.id}`],
+            want: (s) => s.settings.redzone,
+            title: `${teamName(c)} in the red zone`,
+            body: [`${line} · ${detail}`, sit.downDistanceText].filter(Boolean).join("\n"),
+          });
+        }
+      }
+      if (seen && lateClose) {
+        alerts.push({ to: both, want: (s) => s.settings.close, title: "Close game", body: `${line} · ${detail}` });
+      }
+      const final = prev.st !== "post" && cur.st === "post";
+      if (final) {
         const winner = comp.competitors?.find((c) => c.winner);
-        messages.push({ to: [ka, kh], title: winner ? `Final: ${teamName(winner)} win` : "Final", body: line });
+        alerts.push({ to: both, want: (s) => s.settings.finals, title: winner ? `Final: ${teamName(winner)} win` : "Final", body: line });
       }
-      for (const m of messages) {
-        for (const s of followers) {
-          if (m.to.some((k) => s.follows.has(k))) sends.push(deliver(env, s, { title: m.title, body: m.body, tag: key, url }));
+
+      for (const s of followers) {
+        const follows = both.some((k) => s.follows.has(k));
+        const reminded = s.reminds.has(key);
+        const mine = alerts.filter((m) => (m.reminder && reminded) || (m.to.some((k) => s.follows.has(k)) && m.want(s)));
+        const live = s.settings.live && (follows || reminded) && (cur.st === "in" || final);
+        let message = null;
+        if (mine.length && !(s.quiet && !mine.some((m) => m.reminder && reminded))) {
+          // One notification per game: an alert replaces that game's live notification.
+          const m = mine[mine.length - 1];
+          message = { title: m.title, body: m.body };
+        } else if (live) {
+          // The live notification: same tag, so it updates in place without a sound.
+          message = { title: line, body: [detail, last].filter(Boolean).join("\n"), silent: true };
         }
+        if (!message) continue;
+        sends.push(deliver(env, s, { ...message, tag: key, url }, message.silent ? { ttl: 60, urgency: "normal" } : undefined));
       }
     }
   }

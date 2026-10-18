@@ -77,14 +77,14 @@ export async function encryptPayload(subscription, text) {
 }
 
 // Returns the push service's HTTP status; 404 and 410 mean the subscription is gone.
-export async function sendPush(subscription, message, keys, subject) {
+export async function sendPush(subscription, message, keys, subject, { ttl = 600, urgency = "high" } = {}) {
   const body = await encryptPayload(subscription, JSON.stringify(message));
   const res = await fetch(subscription.endpoint, {
     method: "POST",
     headers: {
       Authorization: await vapidAuthorization(subscription.endpoint, keys, subject),
-      TTL: "600",
-      Urgency: "high",
+      TTL: String(ttl),
+      Urgency: urgency,
       "Content-Encoding": "aes128gcm",
       "Content-Type": "application/octet-stream",
     },

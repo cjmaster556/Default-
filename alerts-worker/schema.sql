@@ -31,3 +31,18 @@ CREATE TABLE IF NOT EXISTS videos (
   thumbnail TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS videos_by_league ON videos (league, published);
+
+-- Each phone's alert settings and game reminders (JSON).
+CREATE TABLE IF NOT EXISTS prefs (
+  endpoint TEXT PRIMARY KEY,
+  settings TEXT NOT NULL DEFAULT '{}',
+  reminders TEXT NOT NULL DEFAULT '[]'
+);
+
+-- Extra per-game memory for alerts: last status line, period, red zone,
+-- and whether a close-game alert went out (JSON).
+CREATE TABLE IF NOT EXISTS gamex (
+  key TEXT PRIMARY KEY,
+  x TEXT NOT NULL DEFAULT '{}',
+  updated INTEGER NOT NULL
+);
