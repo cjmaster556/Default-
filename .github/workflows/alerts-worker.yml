@@ -135,4 +135,10 @@ jobs:
           echo "== win probability (finished NFL game)"
           id=$(curl -sS --max-time 20 "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard" | jq -r '[.events[] | select(.status.type.state == "post")][0].id')
           curl -sS --max-time 20 "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=$id" | jq -c '{n: ((.winprobability // []) | length), first: (.winprobability[0] // {}), last: (.winprobability[-1] // {}), playKeys: ((.drives.previous[0].plays[0] // {}) | keys)}' | cut -c1-900
+          echo "== postseason scoreboards (bracket data)"
+          for q in "baseball/mlb 20260925-20261110" "basketball/wnba 20260901-20261031" "football/nfl 20260105-20260215" "basketball/nba 20260410-20260625" "hockey/nhl 20260415-20260625"; do
+            set -- $q
+            echo "-- $1 $2"
+            curl -sS --max-time 30 "https://site.api.espn.com/apis/site/v2/sports/$1/scoreboard?seasontype=3&dates=$2&limit=400" | jq -c '{n: (.events | length), season: .leagues[0].season.type, rounds: ([.events[] | (.competitions[0].notes[0].headline // "-" | sub(" - Game [0-9]+$"; ""))] | group_by(.) | map({r: .[0], n: length})), last: (.events[-1] | {date, name, note: .competitions[0].notes[0].headline, series: .competitions[0].series, type: .competitions[0].type, st: .status.type.state})}' | cut -c1-1600
+          done
           echo "== logo proxy"; curl -sS -o /dev/null -w "%{http_code} %{content_type} %{size_download}\n" "$SERVER/logo?src=https://a.espncdn.com/i/teamlogos/nfl/500/buf.png"
