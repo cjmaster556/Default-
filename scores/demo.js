@@ -308,6 +308,10 @@
           ],
           current: { id: "d10", team: BUF, description: "6 plays, 57 yards, 2:31" },
         },
+        videos: [
+          { id: 1, headline: "Josh Allen finds Dalton Kincaid for an 18-yard touchdown", duration: 24, thumbnail: "", lastModified: new Date(start - 6 * 60000).toISOString(), links: { source: { href: "https://espnmedia-cdn.akamaized.net/demo/clip1.mp4" }, web: { href: "https://www.espn.com/video/clip/_/id/1" } } },
+          { id: 2, headline: "Patrick Mahomes hits Travis Kelce for the score", duration: 18, thumbnail: "", lastModified: new Date(start - 40 * 60000).toISOString(), links: { source: { href: "https://espnmedia-cdn.akamaized.net/demo/clip2.mp4" }, web: { href: "https://www.espn.com/video/clip/_/id/2" } } },
+        ],
         pickcenter: [
           {
             provider: { name: "DraftKings" },

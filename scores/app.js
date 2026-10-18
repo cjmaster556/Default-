@@ -1154,6 +1154,7 @@
       detailEl.classList.add(dir > 0 ? "from-right" : "from-left");
     }
     refreshDetail();
+    ensureGameFeeds(ev._league);
     // Keep the open game fresh even when it isn't on the current view's list.
     if (gameState(ev) === "in") schedule();
   }
@@ -1257,17 +1258,117 @@
       if (league.sport === "football" || league.sport === "hockey") plays += scoringCard(summary, league);
       plays += league.sport === "football" ? drivesCard(summary) : playsCard(summary, league);
     }
+    const clips = gameHighlights(ev, summary);
     const tabs = [
       { key: "stats", label: "Stats", html: stats + loading },
+      ...(clips.length ? [{ key: "highlights", label: "Highlights", html: highlightsHTML(clips) }] : []),
       {
         key: "plays",
-        label: "Play-by-Play",
+        label: "Plays",
         html: plays || loading || `<p class="loading">${st === "pre" ? "Plays will show up here once the game starts." : "No plays yet."}</p>`,
       },
     ];
     const standings = standingsCard(summary, ev);
     if (standings) tabs.push({ key: "standings", label: "Standings", html: standings });
     return tabs;
+  }
+
+  // ---- game highlights ----
+
+  // Clips for one game: ESPN's own game clips (college football and others; the
+  // NFL keeps its video off ESPN's feed), plus league YouTube videos and ESPN
+  // video stories from around game time that name either team.
+  function gameHighlights(ev, summary) {
+    const { away, home } = sides(ev.competitions?.[0]);
+    const words = [away, home]
+      .flatMap((c) => [c?.team?.shortDisplayName, c?.team?.displayName, c?.team?.name])
+      .filter((w) => w && w.length >= 4)
+      .map((w) => w.toLowerCase());
+    const ids = [String(away?.team?.id), String(home?.team?.id)];
+    const mentions = (text) => {
+      const t = String(text || "").toLowerCase();
+      return words.some((w) => t.includes(w));
+    };
+    const since = new Date(ev.date).getTime() - 24 * 3600 * 1000;
+    const recent = (iso) => new Date(iso).getTime() >= since;
+    const out = [];
+    const titles = new Set();
+    const add = (item) => {
+      const t = String(item.title || "").toLowerCase();
+      if (!item.title || titles.has(t)) return;
+      titles.add(t);
+      out.push(item);
+    };
+
+    for (const v of summary?.videos || []) {
+      add({
+        kind: "clip",
+        title: v.headline,
+        thumb: v.thumbnail,
+        duration: v.duration,
+        src: v.links?.source?.HD?.href || v.links?.source?.href,
+        href: v.links?.web?.href || v.links?.mobile?.alert?.href,
+        published: v.originalPublishDate || v.lastModified,
+      });
+    }
+    for (const v of state.tabData[tabDataKey("videos", ev._league, "")]?.data || []) {
+      if (recent(v.published) && mentions(v.title)) add({ kind: "yt", id: v.id, title: v.title, thumb: v.thumbnail || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`, published: v.published, league: ev._league });
+    }
+    for (const a of state.tabData[tabDataKey("news", ev._league, "")]?.data || []) {
+      if (a.type !== "Media" || !recent(a.published)) continue;
+      if (mentions(a.headline) || storyTeams(a).some((id) => ids.includes(id))) {
+        add({ kind: "link", title: a.headline, thumb: a.images?.[0]?.url, published: a.published, href: a.links?.web?.href });
+      }
+    }
+    return out.sort((a, b) => new Date(b.published || 0) - new Date(a.published || 0));
+  }
+
+  // The league's highlight videos and news, shared with the Highlights and News tabs.
+  function ensureGameFeeds(league) {
+    for (const tab of ["videos", "news"]) {
+      const key = tabDataKey(tab, league, "");
+      const have = state.tabData[key];
+      if (have && (have.loading || Date.now() - have.at < TAB_FRESH)) continue;
+      state.tabData[key] = { ...(have || {}), loading: true };
+      fetchTab(tab, league, "")
+        .then(
+          (data) => (state.tabData[key] = { data, at: Date.now(), loading: false }),
+          (error) => (state.tabData[key] = { data: have?.data, error, at: Date.now(), loading: false })
+        )
+        .then(() => {
+          if (state.openGame?.event._league === league) renderDetail();
+        });
+    }
+  }
+
+  const clipLength = (secs) => (secs ? `${Math.floor(secs / 60)}:${pad(Math.round(secs % 60))}` : "");
+
+  function highlightsHTML(items) {
+    return `<div class="hl-grid">${items
+      .map((h) => {
+        const href = h.kind === "yt" ? watchURL(h.id) : h.href || "#";
+        const where = h.kind === "yt" && noEmbed[h.league] ? "YouTube" : h.kind === "link" ? "ESPN" : "";
+        return `
+          <a class="hl-card" href="${esc(href)}" target="_blank" rel="noopener" data-hl="${h.kind}"
+            data-src="${esc(h.src || "")}" data-id="${esc(h.id || "")}" data-league="${esc(h.league || "")}" data-title="${esc(h.title)}" data-poster="${esc(h.thumb || "")}">
+            <span class="thumb">${h.thumb ? `<img src="${esc(h.thumb)}" alt="" loading="lazy" onerror="this.remove()" />` : ""}<span class="play" aria-hidden="true"></span>${
+              h.duration ? `<span class="hl-time">${clipLength(h.duration)}</span>` : ""
+            }</span>
+            <span class="hl-title">${esc(h.title)}</span>
+            <span class="meta-line">${esc([where, h.published ? timeAgo(h.published) : ""].filter(Boolean).join(" · "))}</span>
+          </a>`;
+      })
+      .join("")}</div>`;
+  }
+
+  // ESPN clips are plain video files, so they play in the app's own player.
+  function openClip(src, title, href, poster) {
+    $("video-title").textContent = title;
+    const link = $("video-link");
+    link.textContent = "Open on ESPN";
+    link.href = href || src;
+    $("video-box").innerHTML = `<video src="${esc(src)}" ${poster ? `poster="${esc(poster)}"` : ""} controls autoplay playsinline></video>`;
+    if (!videoDialog.open) videoDialog.showModal();
   }
 
   function hero(ev) {
@@ -2137,6 +2238,7 @@
   let player = null;
   function openVideo(id, title, league) {
     $("video-title").textContent = title;
+    $("video-link").textContent = "Open in YouTube";
     $("video-link").href = watchURL(id);
     const box = $("video-box");
     box.innerHTML = '<div id="video-player"></div>';
@@ -2362,6 +2464,18 @@
   });
 
   detailEl.addEventListener("click", (e) => {
+    const hl = e.target.closest("[data-hl]");
+    if (hl) {
+      const { hl: kind, src, id, league, title, poster } = hl.dataset;
+      if (kind === "clip" && src) {
+        e.preventDefault();
+        openClip(src, title, hl.getAttribute("href"), poster);
+      } else if (kind === "yt" && !noEmbed[league]) {
+        e.preventDefault();
+        openVideo(id, title, league);
+      }
+      return;
+    }
     const tab = e.target.closest("[data-tab]");
     if (tab) {
       state.detailTab = tab.dataset.tab;
