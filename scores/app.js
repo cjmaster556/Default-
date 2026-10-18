@@ -18,7 +18,7 @@
   const ALERTS_KEY = "scoreline.alerts";
 
   // Refresh cadence: fast while games are live, slower near start time, lazy otherwise.
-  const REFRESH_LIVE = 10 * 1000;
+  const REFRESH_LIVE = 5 * 1000;
   const REFRESH_SOON = 60 * 1000;
   const REFRESH_IDLE = 5 * 60 * 1000;
   // A followed team's "next game" (when it isn't on today's board) changes rarely.
@@ -561,37 +561,80 @@
 
   // ---------- game clock ----------
 
-  // The feed only gives a snapshot of the clock, so between refreshes we run it
-  // down locally. A clock counts as running when it moved since the last
-  // refresh in the same period; otherwise (timeout, foul, review) it stays put
-  // until the feed shows it moving again.
+  // The feed only gives snapshots of the clock, and ESPN doesn't refresh it on
+  // every request, so an unchanged clock doesn't mean a stopped one. We run the
+  // clock locally from the last change and call it stopped only when the feed
+  // says so: another part of the game moved on (a new play, a score) while the
+  // clock didn't, or the clock sat still for longer than ESPN's update lag.
+  const STALE_CLOCK = 15 * 1000; // unchanged this long while running: clock has stopped
+  const MAX_RUN = 25; // never run more than this many seconds past the last change
+
+  function parseClock(text) {
+    let m = /^(\d{1,2}):(\d{2})(?:\.(\d))?$/.exec(text || "");
+    if (m) return { secs: Number(m[1]) * 60 + Number(m[2]) + (m[3] ? Number(m[3]) / 10 : 0), tenths: !!m[3] };
+    m = /^(\d{1,2})\.(\d)$/.exec(text || ""); // basketball shows "45.2" in the last minute
+    if (m) return { secs: Number(m[1]) + Number(m[2]) / 10, tenths: true };
+    return null;
+  }
+
+  // Everything but the clock that changes when a play happens.
+  function playSignature(ev) {
+    const comp = ev.competitions?.[0] || {};
+    const sit = comp.situation || {};
+    const scores = (comp.competitors || []).map((c) => c.score).join("-");
+    return [scores, sit.lastPlay?.text || sit.lastPlay?.id || "", sit.downDistanceText || "", sit.balls, sit.strikes, sit.outs].join("|");
+  }
+
   function syncClocks() {
     const now = Date.now();
     const events = [...currentEvents()];
     if (state.openGame) events.push(state.openGame.event);
+    if (state.alerts) events.push(...state.home.events);
+    const seen = new Set();
     for (const ev of events) {
-      if (gameState(ev) !== "in") continue;
-      const m = /^(\d{1,2}):(\d{2})$/.exec(ev.status?.displayClock || "");
-      if (!m) {
+      if (gameState(ev) !== "in" || seen.has(ev._key)) continue;
+      seen.add(ev._key);
+      const p = parseClock(ev.status?.displayClock);
+      if (!p) {
         state.clocks.delete(ev._key);
         continue;
       }
-      const seconds = Number(m[1]) * 60 + Number(m[2]);
       const period = ev.status?.period;
+      const sig = playSignature(ev);
       const prev = state.clocks.get(ev._key);
-      // Two reads a moment apart (scoreboard, then game summary) can't tell a
-      // stopped clock from a running one; keep the earlier verdict.
-      if (prev && prev.period === period && now - prev.syncedAt < 5000) {
-        if (seconds !== prev.seconds) {
-          state.clocks.set(ev._key, { ...prev, seconds, syncedAt: now, running: prev.running || seconds < prev.seconds });
+
+      if (!prev || prev.period !== period) {
+        state.clocks.set(ev._key, { reported: p.secs, anchor: p.secs, anchorAt: now, changedAt: now, running: false, period, tenths: p.tenths, sig });
+        continue;
+      }
+
+      if (p.secs === prev.reported) {
+        const playHappened = sig !== prev.sig;
+        if (prev.running && (playHappened || now - prev.changedAt > STALE_CLOCK)) {
+          state.clocks.set(ev._key, { ...prev, running: false, anchor: p.secs, anchorAt: now, sig });
+        } else if (playHappened) {
+          state.clocks.set(ev._key, { ...prev, sig });
         }
         continue;
       }
-      const running = !!prev && prev.period === period && seconds > 0 && seconds < prev.seconds;
-      state.clocks.set(ev._key, { seconds, period, running, syncedAt: now });
+
+      let running = p.secs < prev.reported && p.secs > 0;
+      // If the clock dropped much less than the real time since its last
+      // change, it stopped somewhere in between; wait for the next change.
+      const elapsed = (now - prev.changedAt) / 1000;
+      const drop = prev.reported - p.secs;
+      if (running && prev.running && elapsed - drop > 6 && drop < elapsed * 0.5) running = false;
+      let anchor = p.secs;
+      if (running && prev.running) {
+        // The feed lags real time, so it often reads a little behind our running
+        // clock. Don't jump backwards for that; only correct real differences.
+        const shown = clockSeconds(ev._key);
+        if (shown != null && p.secs >= shown && p.secs - shown <= 3) anchor = shown;
+      }
+      state.clocks.set(ev._key, { reported: p.secs, anchor, anchorAt: now, changedAt: now, running, period, tenths: p.tenths, sig });
     }
     const anyRunning = [...state.clocks.values()].some((c) => c.running);
-    if (anyRunning && !state.clockTimer) state.clockTimer = setInterval(tickClocks, 250);
+    if (anyRunning && !state.clockTimer) state.clockTimer = setInterval(tickClocks, 100);
     if (!anyRunning && state.clockTimer) {
       clearInterval(state.clockTimer);
       state.clockTimer = null;
@@ -601,20 +644,26 @@
   function clockSeconds(key) {
     const c = state.clocks.get(key);
     if (!c) return null;
-    if (!c.running) return c.seconds;
-    // Don't run past the next expected refresh; if the feed stalls, the clock stops too.
-    const elapsed = Math.min((Date.now() - c.syncedAt) / 1000, REFRESH_LIVE / 1000 + 5);
-    return Math.max(0, Math.ceil(c.seconds - elapsed));
+    if (!c.running) return c.anchor;
+    const elapsed = Math.min((Date.now() - c.anchorAt) / 1000, MAX_RUN);
+    return Math.max(0, c.anchor - elapsed);
   }
 
-  const formatClock = (secs) => `${Math.floor(secs / 60)}:${pad(secs % 60)}`;
+  function formatClock(secs, tenths) {
+    if (tenths && secs < 60) return (Math.floor(secs * 10) / 10).toFixed(1);
+    const whole = Math.ceil(secs - 0.001);
+    return `${Math.floor(whole / 60)}:${pad(whole % 60)}`;
+  }
 
   function tickClocks() {
     document.querySelectorAll("[data-clock]").forEach((el) => {
-      const secs = clockSeconds(el.dataset.clock);
+      const key = el.dataset.clock;
+      const secs = clockSeconds(key);
       if (secs == null) return;
-      const text = formatClock(secs);
+      const c = state.clocks.get(key);
+      const text = formatClock(secs, c?.tenths);
       if (el.textContent !== text) el.textContent = text;
+      el.classList.toggle("stopped", !c?.running);
     });
   }
 
@@ -629,7 +678,7 @@
     if (secs != null && display && detail.startsWith(display)) {
       const rest = detail.slice(display.length).replace(/^\s*-\s*/, "");
       const running = state.clocks.get(ev._key)?.running;
-      return `<span class="clock${running ? "" : " stopped"}" data-clock="${esc(ev._key)}">${formatClock(secs)}</span> <span>${esc(rest)}</span>`;
+      return `<span class="clock${running ? "" : " stopped"}" data-clock="${esc(ev._key)}">${formatClock(secs, state.clocks.get(ev._key)?.tenths)}</span> <span>${esc(rest)}</span>`;
     }
     return esc(detail);
   }
