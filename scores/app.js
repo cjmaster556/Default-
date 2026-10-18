@@ -1430,16 +1430,26 @@
 
   // The app that carries a game, from the channel names ESPN lists. Streaming
   // services come first so "ESPN+" isn't mistaken for the ESPN channel.
+  // `android` is the app's package name: on Android the button opens that app
+  // directly (some, like ESPN, don't open from their web address), falling
+  // back to the website when it isn't installed.
   const WATCH_SERVICES = {
     yttv: { label: "YouTube TV", url: "https://tv.youtube.com/" },
-    prime: { label: "Prime Video", url: "https://www.primevideo.com/" },
-    peacock: { label: "Peacock", url: "https://www.peacocktv.com/" },
-    netflix: { label: "Netflix", url: "https://www.netflix.com/" },
+    prime: { label: "Prime Video", url: "https://www.primevideo.com/", android: "com.amazon.avod.thirdpartyclient" },
+    peacock: { label: "Peacock", url: "https://www.peacocktv.com/", android: "com.peacocktv.peacockandroid" },
+    netflix: { label: "Netflix", url: "https://www.netflix.com/", android: "com.netflix.mediaclient" },
     appletv: { label: "Apple TV", url: "https://tv.apple.com/" },
-    espnapp: { label: "ESPN", url: "https://www.espn.com/watch/" },
-    max: { label: "Max", url: "https://www.max.com/" },
-    youtube: { label: "YouTube", url: "https://www.youtube.com/" },
+    espnapp: { label: "ESPN", url: "https://www.espn.com/watch/", android: "com.espn.score_center" },
+    max: { label: "Max", url: "https://www.max.com/", android: "com.wbd.stream" },
+    youtube: { label: "YouTube", url: "https://www.youtube.com/", android: "com.google.android.youtube" },
   };
+
+  const isAndroid = /Android/i.test(navigator.userAgent);
+
+  function watchHref(svc) {
+    if (!isAndroid || !svc.android) return svc.url;
+    return `intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${svc.android};S.browser_fallback_url=${encodeURIComponent(svc.url)};end`;
+  }
   const WATCH_RULES = [
     [/prime/, "prime"],
     [/peacock/, "peacock"],
@@ -1467,7 +1477,7 @@
       .slice(0, 2)
       .map((k) => {
         const svc = WATCH_SERVICES[k];
-        return `<a class="watch-btn" href="${svc.url}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" /></svg>Watch on ${esc(svc.label)}</a>`;
+        return `<a class="watch-btn" href="${esc(watchHref(svc))}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" /></svg>Watch on ${esc(svc.label)}</a>`;
       })
       .join("")}</div>`;
   }
