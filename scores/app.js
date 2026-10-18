@@ -701,6 +701,10 @@
     hockey: /stoppage|icing|offside|penalty|time ?out|end of|goal scored|scores?\b|puck (in|over)|hand pass|review|challenge/i,
   };
 
+  // Breaks between periods, however the feed words them ("END QUARTER 3",
+  // "End of the 2nd Period", "Halftime", "End of Game").
+  const PERIOD_BREAK = /\bend (of )?(the )?(\d\w* )?(quarter|half|game|period|regulation|overtime)|\bhalf ?time|\bend (quarter|period)\b|\bstart of|\bbeginning of|\bdelay|\breview|\btime ?out/i;
+
   function parseClock(text) {
     let m = /^(\d{1,2}):(\d{2})(?:\.(\d))?$/.exec(text || "");
     if (m) return { secs: Number(m[1]) * 60 + Number(m[2]) + (m[3] ? Number(m[3]) / 10 : 0), tenths: !!m[3] };
@@ -753,7 +757,11 @@
         // is corrected (held, not bounced) on the next update.
         const last = ev.competitions?.[0]?.situation?.lastPlay?.text || "";
         const detail = ev.status?.type?.detail || "";
-        const guess = p.secs > 0 && !!STOP_PLAYS[sport] && !STOP_PLAYS[sport].test(last) && !/half|end of|delay|review|time ?out/i.test(detail);
+        // A new period, or a clock still at a full period (15:00, 12:00, 20:00...),
+        // hasn't started yet: that waits for the kickoff, tip or faceoff.
+        const notStarted = !!prev || (p.secs >= 300 && p.secs % 60 === 0);
+        const guess =
+          !notStarted && p.secs > 0 && !!STOP_PLAYS[sport] && !STOP_PLAYS[sport].test(last) && !PERIOD_BREAK.test(last) && !PERIOD_BREAK.test(detail);
         state.clocks.set(ev._key, { reported: p.secs, anchor: p.secs, anchorAt: now, changedAt: now, running: guess, guessed: guess, period, tenths: p.tenths, sig, gaps: prev?.gaps || [] });
         continue;
       }
@@ -771,7 +779,8 @@
       }
 
       const newPlay = sig !== prev.sig;
-      const whistle = newPlay && STOP_PLAYS[sport]?.test(ev.competitions?.[0]?.situation?.lastPlay?.text || "");
+      const lastText = ev.competitions?.[0]?.situation?.lastPlay?.text || "";
+      const whistle = newPlay && (!!STOP_PLAYS[sport]?.test(lastText) || PERIOD_BREAK.test(lastText));
 
       // The clock shown right now, to hold at if this update says it stopped.
       const holdAt = (secs) => {
