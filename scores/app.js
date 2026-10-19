@@ -3710,6 +3710,55 @@
     if (src.startsWith("blob:")) URL.revokeObjectURL(src);
   });
 
+  // Swipe sideways on the main page to move between the chips along the top
+  // (My Teams, NFL, College Football...), on every tab.
+  const mainEl = document.querySelector("main");
+  let pageTouch = null;
+
+  function swipeChip(dir) {
+    const tab = state.tab;
+    const keys = tab === "scores" ? ["home", ...LEAGUES.map((l) => l.key)] : tabChoices(tab).map((c) => c.key);
+    const current = tab === "scores" ? state.view : tabLeague(tab);
+    const next = keys[keys.indexOf(current) + dir];
+    if (!next) return;
+    window.scrollTo(0, 0);
+    if (tab === "scores") setView(next);
+    else {
+      state.tabLeague[tab] = next;
+      syncHash();
+      render();
+      loadTab();
+    }
+    mainEl.classList.remove("from-left", "from-right");
+    void mainEl.offsetWidth; // restart the animation
+    mainEl.classList.add(dir > 0 ? "from-right" : "from-left");
+  }
+
+  mainEl.addEventListener(
+    "touchstart",
+    (e) => {
+      const t = e.touches[0];
+      // Leave parts that scroll sideways themselves (wide tables, the bracket) alone.
+      const scroller = e.target.closest(".table-scroll, .bracket");
+      const scrolls = scroller && scroller.scrollWidth > scroller.clientWidth + 2;
+      pageTouch = e.touches.length > 1 || scrolls || e.target.closest("input, select") ? null : { x: t.clientX, y: t.clientY };
+    },
+    { passive: true }
+  );
+  mainEl.addEventListener(
+    "touchend",
+    (e) => {
+      if (!pageTouch) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - pageTouch.x;
+      const dy = t.clientY - pageTouch.y;
+      pageTouch = null;
+      if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) swipeChip(dx < 0 ? 1 : -1);
+    },
+    { passive: true }
+  );
+  mainEl.addEventListener("animationend", () => mainEl.classList.remove("from-left", "from-right"));
+
   // Swipe sideways between games, like flipping through cards.
   let touch = null;
   detailEl.addEventListener(

@@ -29,6 +29,8 @@ body {
   font-family: var(--font);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
+  /* Sideways swipes switch leagues; don't let the browser treat them as "go back". */
+  overscroll-behavior-x: none;
 }
 
 button,
@@ -1031,11 +1033,13 @@ table {
   padding-top: 0;
 }
 
-.sheet-body.from-right {
+.sheet-body.from-right,
+main.from-right {
   animation: from-right 0.25s ease-out;
 }
 
-.sheet-body.from-left {
+.sheet-body.from-left,
+main.from-left {
   animation: from-left 0.25s ease-out;
 }
 
@@ -1729,7 +1733,9 @@ table {
   .card.scored,
   .sheet[open],
   .sheet-body.from-left,
-  .sheet-body.from-right {
+  .sheet-body.from-right,
+  main.from-left,
+  main.from-right {
     animation: none;
   }
   .ball,
