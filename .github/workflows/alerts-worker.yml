@@ -159,7 +159,13 @@ jobs:
             jq -c '.events[0].competitions[0].competitors[0:2][] | {keys: keys, id, order, sortOrder, status, score, athlete: (.athlete | {keys: keys, displayName, shortName, flag, headshot}), stats: .statistics[0:6], lsN: (.linescores | length), ls0: (.linescores[0] | {keys: keys, value, displayValue, period, holesN: (.linescores | length), hole0: .linescores[0]}), lsLast: (.linescores[-1] | {value, displayValue, period, holesN: (.linescores | length)})}' /tmp/g.json | cut -c1-3000
           done
           echo "-- golf by date (a past tournament)"
-          curl -sS --max-time 30 "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard?dates=20261016" | jq -c '[.events[]? | {name, st: .status.type.state, n: (.competitions[0].competitors | length)}]' | cut -c1-400
+          cal=$(curl -sS --max-time 30 "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard" | jq -c '[.leagues[0].calendar[] | select((.endDate // "") < "2026-10-19")] | .[-2:]')
+          echo "recent PGA tournaments: $cal" | cut -c1-500
+          id=$(echo "$cal" | jq -r '.[-1].id'); sd=$(echo "$cal" | jq -r '.[-1].startDate' | cut -c1-10 | tr -d '-')
+          for q in "dates=$sd" "event=$id" "dates=${sd:0:6}" "tournamentId=$id"; do
+            echo "pga ?$q -> $(curl -sS --max-time 30 "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard?$q" | jq -c '[.events[]? | {id, name, n: (.competitions[0].competitors | length)}]' | cut -c1-300)"
+          done
+          echo "lpga ?dates=20261016 -> $(curl -sS --max-time 30 "https://site.api.espn.com/apis/site/v2/sports/golf/lpga/scoreboard?dates=20261016" | jq -c '[.events[]? | {id, name, n: (.competitions[0].competitors | length)}]' | cut -c1-300)"
           echo "-- golf leaderboard (site.web)"
           curl -sS --max-time 30 "https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?league=pga" | jq -c '{keys: keys, ev: (.events[0] | {keys: keys, name, status: .status.type, comp: (.competitions[0] | {keys: keys, c0: (.competitors[0] | {keys: keys, status, score, stats: [.statistics[]? | {name, displayValue}][0:10]})})})}' | cut -c1-2500
           echo "-- golf news / standings"
