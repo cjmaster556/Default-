@@ -1,6 +1,6 @@
 // Network-first for the app's own files so updates show up right away, with a
 // cached copy as the fallback when offline. Score requests go straight to ESPN.
-const CACHE = "scoreline-v30";
+const CACHE = "scoreline-v31";
 importScripts("config.js");
 const LOGOS = "scoreline-logos";
 const SHELL = ["./", "index.html", "style.css", "app.js", "config.js", "demo.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
@@ -78,6 +78,9 @@ self.addEventListener("push", (e) => {
       ...(image ? { image } : {}),
       data: { url: d.url || self.registration.scope },
     });
+  // Alerts arrive while the app is closed, so check for a newer version of
+  // this file now and then, instead of only when the app is opened.
+  self.registration.update().catch(() => {});
   // Never hold a notification up for long waiting on the picture.
   const picture = d.card ? Promise.race([drawCard(d.card).catch(() => null), new Promise((r) => setTimeout(() => r(null), 4000))]) : Promise.resolve(null);
   e.waitUntil(picture.then(show));

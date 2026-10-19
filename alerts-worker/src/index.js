@@ -158,6 +158,17 @@ async function sendTest(env, body) {
       : "Follow some teams to start getting alerts.",
     tag: "scoreline-test",
     url: SUBJECT,
+    // A sample scoreboard picture, to check how game alerts will look.
+    card: {
+      league: "NFL",
+      st: "in",
+      status: "Q4 · 2:00",
+      line: "Bills: 1st & 10 at KC 25",
+      rz: false,
+      poss: "h",
+      a: { abbr: "KC", score: "24", logo: "https://a.espncdn.com/i/teamlogos/nfl/500/kc.png", color: "e31837", alt: "ffb612" },
+      h: { abbr: "BUF", score: "21", logo: "https://a.espncdn.com/i/teamlogos/nfl/500/buf.png", color: "00338d", alt: "d50a0a" },
+    },
   });
   return json({ ok: status < 300, status });
 }
