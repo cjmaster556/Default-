@@ -74,6 +74,7 @@
     alertSettings: loadJSON(SETTINGS_KEY, {}),
     reminders: new Map(loadJSON(REMIND_KEY, []).map((r) => [r.key, r])), // event key -> { key, league, id, date, name }
     teamPage: null, // { league, id, tab, info, schedule, roster, news, clips, error }
+    extraEvents: new Map(), // games opened from a schedule or alert that aren't on a loaded scoreboard
     pendingGame: null, // "nfl:401…" to open once its league loads (from a notification)
     alertSeen: new Map(), // event key -> { a, h, st } as of the last check
     seq: 0,
@@ -1498,7 +1499,8 @@
     return (
       currentEvents().find((e) => e._key === key) ||
       Object.values(state.leagues).flatMap((l) => l.events).find((e) => e._key === key) ||
-      state.home.events.find((e) => e._key === key)
+      state.home.events.find((e) => e._key === key) ||
+      state.extraEvents.get(key)
     );
   }
 
@@ -1517,6 +1519,11 @@
     const same = state.openGame?.key === key;
     state.openGame = { key, event: ev, summary: same ? state.openGame.summary : null };
     renderDetail();
+    // Opened from a team page on top of the game sheet: bring the game sheet back to the front.
+    if (gameDialog.open && teamDialog.open) {
+      gameDialog.dataset.reopening = "1";
+      gameDialog.close();
+    }
     if (!gameDialog.open) gameDialog.showModal();
     if (!same) detailEl.scrollTop = 0;
     if (dir) {
@@ -1535,7 +1542,43 @@
     if (!key || view !== key.split(":")[0]) return;
     state.pendingGame = null;
     history.replaceState(null, "", `#${view}`);
-    if (findEvent(key)) openGame(key);
+    openGameById(view, key.split(":")[1]);
+  }
+
+  // Open any game, even one that isn't on a loaded scoreboard (another week,
+  // from a team's schedule or an alert): build it from its summary's header.
+  async function openGameById(league, id) {
+    const key = `${league}:${id}`;
+    if (findEvent(key)) return openGame(key);
+    try {
+      const summary = await fetchSummary(league, id);
+      const h = summary?.header || {};
+      const comp = h.competitions?.[0] ? JSON.parse(JSON.stringify(h.competitions[0])) : null;
+      if (!comp) throw new Error("no game");
+      // The summary lists TV networks differently from the scoreboard.
+      comp.broadcasts = (comp.broadcasts || []).map((b) => (b.names ? b : { names: [b.media?.shortName || b.media?.name].filter(Boolean) }));
+      const [away, home] = [comp.competitors?.find((c) => c.homeAway === "away"), comp.competitors?.find((c) => c.homeAway === "home")];
+      const ev = {
+        id: String(id),
+        date: comp.date,
+        name: `${away?.team?.displayName || ""} at ${home?.team?.displayName || ""}`,
+        shortName: `${away?.team?.abbreviation || ""} @ ${home?.team?.abbreviation || ""}`,
+        week: h.week,
+        season: h.season,
+        status: comp.status,
+        competitions: [comp],
+      };
+      normalizeEvent(ev);
+      tagEvent(ev, league);
+      state.extraEvents.set(key, ev);
+      openGame(key);
+      if (state.openGame?.key === key && !state.openGame.summary) {
+        state.openGame.summary = summary;
+        renderDetail();
+      }
+    } catch {
+      toast("Couldn't open that game");
+    }
   }
 
   function stepGame(dir) {
@@ -1819,15 +1862,22 @@
     peacock: { label: "Peacock", url: "https://www.peacocktv.com/", android: "com.peacocktv.peacockandroid" },
     netflix: { label: "Netflix", url: "https://www.netflix.com/", android: "com.netflix.mediaclient" },
     appletv: { label: "Apple TV", url: "https://tv.apple.com/" },
-    espnapp: { label: "ESPN", url: "https://www.espn.com/watch/", android: "com.espn.score_center", appLink: "sportscenter://x-callback-url/showWatch" },
+    // ESPN's app turns down its own sportscenter:// links from a browser, so ask
+    // it to open the game's espn.com page instead (the website if it won't).
+    espnapp: { label: "ESPN", url: "https://www.espn.com/watch/", android: "com.espn.score_center", gamePage: true },
     max: { label: "Max", url: "https://www.max.com/", android: "com.wbd.stream" },
     youtube: { label: "YouTube", url: "https://www.youtube.com/", android: "com.google.android.youtube" },
   };
 
   const isAndroid = /Android/i.test(navigator.userAgent);
 
-  function watchHref(svc) {
-    if (!isAndroid || !svc.android) return svc.url;
+  function watchHref(svc, ev) {
+    const page = svc.gamePage && ev ? espnGamePage(ev) : null;
+    if (!isAndroid || !svc.android) return page || svc.url;
+    if (page) {
+      const u = new URL(page);
+      return `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=https;package=${svc.android};S.browser_fallback_url=${encodeURIComponent(page)};end`;
+    }
     const link = new URL(svc.appLink || svc.url);
     const scheme = link.protocol.replace(":", "");
     const rest = svc.appLink ? svc.appLink.slice(scheme.length + 3) : `${link.host}${link.pathname}`;
@@ -1845,7 +1895,15 @@
     [/^(cbs|fox|nbc|abc|espn|fs1|fs2|fox sports|nfl net|nfln|nba tv|tnt|tbs|trutv|mlb net|nhl net|btn|big ten|sec ?n|acc ?n|usa|golf)/, "yttv"],
   ];
 
-  function watchButtons(comp) {
+  // The game's page on espn.com, from the event's own links when it has them.
+  function espnGamePage(ev) {
+    const own = (ev.links || []).find((l) => l.rel?.includes("summary") && /^https:\/\/www\.espn\.com\//.test(l.href || ""));
+    if (own) return own.href;
+    const slug = { nfl: "nfl", cfb: "college-football", nba: "nba", wnba: "wnba", mlb: "mlb", nhl: "nhl" }[ev._league];
+    return slug ? `https://www.espn.com/${slug}/game/_/gameId/${encodeURIComponent(ev.id)}` : null;
+  }
+
+  function watchButtons(comp, ev) {
     const names = (comp.broadcasts || []).flatMap((b) => b.names || []);
     const services = [];
     for (const name of names) {
@@ -1860,7 +1918,7 @@
       .slice(0, 2)
       .map((k) => {
         const svc = WATCH_SERVICES[k];
-        return `<a class="watch-btn" href="${esc(watchHref(svc))}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" /></svg>Watch on ${esc(svc.label)}</a>`;
+        return `<a class="watch-btn" href="${esc(watchHref(svc, ev))}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z" /></svg>Watch on ${esc(svc.label)}</a>`;
       })
       .join("")}</div>`;
   }
@@ -1922,7 +1980,7 @@
         </div>
         ${st !== "pre" ? lineScore(league, away, home, st) : ""}
         ${now ? `<div class="gd-now">${now}</div>` : ""}
-        ${st !== "post" ? watchButtons(comp) : ""}
+        ${st !== "post" ? watchButtons(comp, ev) : ""}
         ${
           st === "pre" && alertsSupported()
             ? `<button class="remind-pill${state.reminders.has(ev._key) ? " on" : ""}" data-remind="${esc(ev._key)}">${BELL_SVG}${
@@ -2651,7 +2709,7 @@
         const t = opp.team || {};
         const label = ev.week?.text || comp.type?.abbreviation || "";
         return `
-          <li class="tp-game${ev === next ? " next" : ""}${st === "post" ? " done" : ""}">
+          <li class="tp-game${ev === next ? " next" : ""}${st === "post" ? " done" : ""}" data-open-game="${esc(`${page.league}:${ev.id}`)}" role="button" tabindex="0">
             <span class="tp-date">${esc(date)}${label && byKey[page.league].sport === "football" ? `<small>${esc(label)}</small>` : ""}</span>
             <span class="tp-opp">${me.homeAway === "away" ? "@" : "vs"} ${logo({ logo: t.logo || t.logos?.[0]?.href, color: t.color }, "xs")} ${esc(t.shortDisplayName || t.abbreviation || t.displayName || "")}</span>
             <span class="tp-right">${right}</span>
@@ -2714,6 +2772,12 @@
       renderTeam();
       if (state.view === "home") refresh();
       else render();
+      return;
+    }
+    const game = e.target.closest("[data-open-game]");
+    if (game) {
+      const [league, id] = game.dataset.openGame.split(":");
+      openGameById(league, id);
       return;
     }
     const clip = e.target.closest("[data-hl]");
@@ -3855,6 +3919,11 @@
   }
 
   gameDialog.addEventListener("close", () => {
+    // Closed only to come back to the front; it's still showing a game.
+    if (gameDialog.dataset.reopening) {
+      delete gameDialog.dataset.reopening;
+      return;
+    }
     state.openGame = null;
   });
 

@@ -28,7 +28,8 @@ Plain HTML/CSS/JS, no build step. `app.js` is one IIFE (about 3,000 lines), orga
   League YouTube videos come from the Worker. The NFL blocks YouTube embedding, so `noEmbed.nfl` makes NFL videos open in YouTube.
   Other leagues play through the YouTube IFrame API; error 101/150 marks that league as no-embed.
 - **Watch buttons**: map ESPN broadcast names to apps. On Android they use `intent://` links with the app package and a
-  web fallback; ESPN uses `sportscenter://`. Chrome only opens apps through links the app registered.
+  web fallback. Chrome only opens apps through links the app registered. `sportscenter://` (ESPN) fell back to the website on the
+  user's phone, so ESPN now asks the app to open the game's espn.com page (`espnGamePage`); unverified whether the app takes it.
 - **Game clock** (the most-tuned part; see `// ---------- game clock ----------`):
   - ESPN's NFL `displayClock` is the clock at the snap of the last logged play, published 30 seconds to 2 minutes late (measured via play `wallclock`).
   - The user chose to keep a **ticking estimate** for football. Rules: run locally from the last change; ignore readings older than ones
@@ -43,6 +44,8 @@ Plain HTML/CSS/JS, no build step. `app.js` is one IIFE (about 3,000 lines), orga
   (with the phone's time zone) and reminders to `/subscribe`.
 - **Team pages** (`openTeam`): any element with `teamLink(league, team)` attributes (`data-team-page`) opens one: game hero logo/name,
   standings and playoff rows, bracket teams. Schedule, roster (football is grouped), team news (filtered by category teamId), highlights.
+  Schedule rows open the game via `openGameById`, which builds an event from the summary `header` when it isn't on a loaded
+  scoreboard (kept in `state.extraEvents`); notification links use it too. Opening a game from a team page re-raises the game sheet.
 - **Win probability** (`winProbCard`): summary `winprobability` (`homeWinPercentage` per `playId`); periods come from play ids in drives/plays.
 - **Playoffs** (Standings → Playoffs): `PLAYOFF_SPOTS` cut lines for the seeding race; bracket from postseason scoreboards.
   ESPN's scoreboard rejects day ranges but takes whole months (`dates=202610&seasontype=3`), so `postseasonMonths` fetches each month.

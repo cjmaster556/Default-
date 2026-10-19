@@ -2532,6 +2532,14 @@ table {
   font-size: 0.92rem;
 }
 
+.tp-game {
+  cursor: pointer;
+}
+
+.tp-game:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .tp-game:first-child {
   border-top: 0;
 }

@@ -453,6 +453,21 @@
         boxscore: { teams: [{ team: LAD, statistics: [] }, { team: NYY, statistics: [] }] },
       };
     }
+    // Games from a team's schedule: a header like ESPN's, built from the demo schedule.
+    if (/^9\d$/.test(id)) {
+      for (const tm of T[key] || []) {
+        const ev = teamSchedule(key, tm.id).events.find((e) => e.id === id);
+        if (!ev) continue;
+        const comp = ev.competitions[0];
+        return {
+          header: {
+            id,
+            week: { number: Number(id[1]) + 2 },
+            competitions: [{ ...comp, date: ev.date, broadcasts: [{ type: { shortName: "TV" }, media: { shortName: "FOX" } }] }],
+          },
+        };
+      }
+    }
     return {};
   }
 
