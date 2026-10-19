@@ -63,7 +63,9 @@ Cloudflare Worker on the free plan, with a D1 database (`schema.sql`: subs, game
 - Push alerts follow each phone's settings (`prefs` table, `cleanSettings`): start, scores (basketball sends quarter summaries instead
   of every basket), close finishes (`isLateClose`), red zone, finals, quiet hours (`isQuiet`, in the phone's time zone), reminders (start alert).
   The live score notification is a silent push with the game's tag, sent when the status line changes, so it updates in place; alerts use
-  the same tag and replace it. `gamex` remembers per-game status line, period, red zone and the close-game flag. A second pass runs 28 seconds later while a game is live. Web Push is hand-rolled (`src/push.js`, WebCrypto).
+  the same tag and replace it. Every game push carries `card` (`scoreCardData`): the service worker draws a Google-style scoreboard
+  picture from it (`drawCard`, OffscreenCanvas, logos via `/logo`, cached in the `scoreline-logos` cache) and sets it as the
+  notification `image` (shown when expanded). `sw.js` loads `config.js` (which sets `self.SCORELINE_CONFIG`) for the server URL. `gamex` remembers per-game status line, period, red zone and the close-game flag. A second pass runs 28 seconds later while a game is live. Web Push is hand-rolled (`src/push.js`, WebCrypto).
   VAPID keys are generated on first run and stored in D1.
 - `/espn/...` passes through allowed ESPN feeds (including team schedule/roster). `/logo?src=` proxies espncdn.com logos with CORS for the share card. `/videos?league=` serves league YouTube videos, with channel IDs resolved from handles and cached.
   Videos are saved for 3 days because the RSS feed only holds 15.

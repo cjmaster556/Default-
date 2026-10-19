@@ -386,6 +386,50 @@ function isLateClose(league, status, margin) {
   return false;
 }
 
+const LEAGUE_LABEL = { nfl: "NFL", cfb: "College Football", nba: "NBA", wnba: "WNBA", mlb: "MLB", nhl: "NHL" };
+
+// What the phone needs to draw a scoreboard picture for the notification.
+function scoreCardData(league, ev, comp, away, home) {
+  const st = ev.status?.type?.state || "pre";
+  const sport = SPORT[league];
+  const period = ev.status?.period || 0;
+  const clock = ev.status?.displayClock;
+  const name = ev.status?.type?.name || "";
+  let status = ev.status?.type?.shortDetail || "";
+  if (st === "in" && clock && !/HALFTIME|END_PERIOD|DELAYED/.test(name) && (sport === "football" || sport === "basketball" || sport === "hockey")) {
+    const p = sport === "hockey" ? (period > 3 ? "OT" : `P${period}`) : period > 4 ? "OT" : `Q${period}`;
+    status = `${p} · ${clock}`;
+  }
+  const sit = comp.situation || {};
+  let line = "";
+  if (st === "in" && sport === "football" && sit.downDistanceText) {
+    const poss = [away, home].find((c) => String(c.team.id) === String(sit.possession));
+    line = `${poss ? `${teamName(poss)}: ` : ""}${sit.downDistanceText}`;
+  } else if (st === "in" && sport === "baseball" && sit.outs != null) {
+    line = `${sit.outs} out${sit.outs === 1 ? "" : "s"}${sit.balls != null ? ` · ${sit.balls}-${sit.strikes}` : ""}`;
+  } else if (st === "post") {
+    line = comp.notes?.[0]?.headline || "";
+  }
+  const side = (c) => ({
+    abbr: c.team.abbreviation || "",
+    score: st === "pre" ? "" : String(num(c.score)),
+    logo: c.team.logo || "",
+    color: c.team.color || "",
+    alt: c.team.alternateColor || "",
+    won: st === "post" && !!c.winner,
+  });
+  return {
+    league: LEAGUE_LABEL[league] || "",
+    st,
+    status,
+    line,
+    rz: !!sit.isRedZone,
+    poss: sport === "football" && st === "in" ? (String(sit.possession) === String(away.team.id) ? "a" : String(sit.possession) === String(home.team.id) ? "h" : "") : "",
+    a: side(away),
+    h: side(home),
+  };
+}
+
 const ordinal = (n) => n + ({ 1: "st", 2: "nd", 3: "rd" }[n] || "th");
 
 async function checkOnce(env) {
@@ -490,6 +534,7 @@ async function checkOnce(env) {
       const line = `${away.team.abbreviation} ${cur.a} – ${cur.h} ${home.team.abbreviation}`;
       // Tapping the notification opens this game's screen.
       const url = `${SUBJECT}#${league}/${ev.id}`;
+      const card = scoreCardData(league, ev, comp, away, home);
       const last = sit.lastPlay?.text;
       // Each alert says who it's for: followers of these teams whose settings want it.
       const alerts = [];
@@ -554,7 +599,7 @@ async function checkOnce(env) {
           message = { title: line, body: [detail, last].filter(Boolean).join("\n"), silent: true };
         }
         if (!message) continue;
-        sends.push(deliver(env, s, { ...message, tag: key, url }, message.silent ? { ttl: 60, urgency: "normal" } : undefined));
+        sends.push(deliver(env, s, { ...message, tag: key, url, card }, message.silent ? { ttl: 60, urgency: "normal" } : undefined));
       }
     }
   }

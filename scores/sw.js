@@ -1,6 +1,8 @@
 // Network-first for the app's own files so updates show up right away, with a
 // cached copy as the fallback when offline. Score requests go straight to ESPN.
-const CACHE = "scoreline-v29";
+const CACHE = "scoreline-v30";
+importScripts("config.js");
+const LOGOS = "scoreline-logos";
 const SHELL = ["./", "index.html", "style.css", "app.js", "config.js", "demo.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -16,7 +18,7 @@ self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== LOGOS).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -54,7 +56,9 @@ self.addEventListener("notificationclick", (e) => {
   );
 });
 
-// An alert from the alerts server (sent even when the app is closed).
+// An alert from the alerts server (sent even when the app is closed). Game
+// alerts carry the score, and get a scoreboard picture like Google's live
+// sports cards, drawn here; Android shows it when the notification is expanded.
 self.addEventListener("push", (e) => {
   let d = {};
   try {
@@ -62,7 +66,7 @@ self.addEventListener("push", (e) => {
   } catch {
     d = { body: e.data ? e.data.text() : "" };
   }
-  e.waitUntil(
+  const show = (image) =>
     self.registration.showNotification(d.title || "Scoreline", {
       body: d.body || "",
       tag: d.tag,
@@ -71,7 +75,130 @@ self.addEventListener("push", (e) => {
       silent: !!d.silent,
       icon: "icons/icon-192.png",
       badge: "icons/icon-192.png",
+      ...(image ? { image } : {}),
       data: { url: d.url || self.registration.scope },
-    })
-  );
+    });
+  // Never hold a notification up for long waiting on the picture.
+  const picture = d.card ? Promise.race([drawCard(d.card).catch(() => null), new Promise((r) => setTimeout(() => r(null), 4000))]) : Promise.resolve(null);
+  e.waitUntil(picture.then(show));
 });
+
+// Team logos come through the alerts server (so they can be drawn) and are kept for next time.
+async function logoBitmap(src) {
+  if (!src) return null;
+  const server = String(self.SCORELINE_CONFIG?.alertsServer || "").replace(/\/$/, "");
+  const url = server ? `${server}/logo?src=${encodeURIComponent(src)}` : src;
+  const cache = await caches.open(LOGOS);
+  let res = await cache.match(url);
+  if (!res) {
+    res = await fetch(url, { mode: "cors" });
+    if (!res.ok) return null;
+    await cache.put(url, res.clone());
+  }
+  return createImageBitmap(await res.blob());
+}
+
+function teamColor(t) {
+  const ok = (h) => /^[0-9a-f]{6}$/i.test(h || "");
+  const dark = (h) => {
+    const n = parseInt(h, 16);
+    return ((n >> 16) * 0.3 + ((n >> 8) & 255) * 0.59 + (n & 255) * 0.11) / 255 < 0.12;
+  };
+  if (ok(t.color) && !(dark(t.color) && ok(t.alt))) return `#${t.color}`;
+  return ok(t.alt) ? `#${t.alt}` : "#3a3a3c";
+}
+
+function roundRect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+async function drawCard(c) {
+  if (typeof OffscreenCanvas === "undefined") return null;
+  const W = 1000;
+  const H = 500;
+  const canvas = new OffscreenCanvas(W, H);
+  const g = canvas.getContext("2d");
+  const font = (weight, size) => `${weight} ${size}px Roboto, "Google Sans", system-ui, sans-serif`;
+
+  // Dark card with each team's color glowing in from its side.
+  g.fillStyle = "#1f1f22";
+  g.fillRect(0, 0, W, H);
+  for (const [t, x] of [
+    [c.a, 0],
+    [c.h, W],
+  ]) {
+    const glow = g.createRadialGradient(x, H * 0.35, 0, x, H * 0.35, W * 0.55);
+    glow.addColorStop(0, `${teamColor(t)}cc`);
+    glow.addColorStop(1, `${teamColor(t)}00`);
+    g.fillStyle = glow;
+    g.fillRect(0, 0, W, H);
+  }
+
+  const [la, lh] = await Promise.all([logoBitmap(c.a.logo).catch(() => null), logoBitmap(c.h.logo).catch(() => null)]);
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  const tile = 170;
+  for (const [t, img, x, sx] of [
+    [c.a, la, 40, 300],
+    [c.h, lh, W - 40 - tile, W - 300],
+  ]) {
+    g.globalAlpha = c.st === "post" && !t.won ? 0.55 : 1;
+    g.fillStyle = "rgba(255,255,255,0.14)";
+    roundRect(g, x, 60, tile, tile, 28);
+    g.fill();
+    if (img) g.drawImage(img, x + 20, 80, tile - 40, tile - 40);
+    else {
+      g.fillStyle = teamColor(t);
+      g.beginPath();
+      g.arc(x + tile / 2, 60 + tile / 2, 55, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.fillStyle = "#e8e8ec";
+    g.font = font(600, 46);
+    g.fillText(t.abbr, x + tile / 2, 290);
+    g.fillStyle = "#fff";
+    g.font = font(700, 128);
+    if (t.score !== "") g.fillText(t.score, sx, 150);
+    g.globalAlpha = 1;
+  }
+  // Who has the ball.
+  if (c.poss) {
+    g.fillStyle = "#ffd60a";
+    g.beginPath();
+    g.arc(c.poss === "a" ? 300 + 70 : W - 300 - 70, 92, 11, 0, Math.PI * 2);
+    g.fill();
+  }
+
+  // The clock in a pill: red while live, gray otherwise.
+  g.font = font(700, 36);
+  const status = c.status || "";
+  const pw = Math.min(250, g.measureText(status).width + 44);
+  g.fillStyle = c.st === "in" ? "#b3261e" : "rgba(255,255,255,0.16)";
+  roundRect(g, W / 2 - pw / 2, 120, pw, 64, 32);
+  g.fill();
+  g.fillStyle = "#fff";
+  g.fillText(status, W / 2, 153, pw - 24);
+  g.fillStyle = "#b9b9c0";
+  g.font = font(600, 38);
+  g.fillText(c.league, W / 2, 290);
+
+  if (c.line) {
+    g.fillStyle = "rgba(255,255,255,0.18)";
+    g.fillRect(60, 350, W - 120, 2);
+    g.fillStyle = c.rz ? "#ff6961" : "#f2f2f5";
+    g.font = font(500, 42);
+    g.fillText(c.line, W / 2, 425, W - 120);
+  }
+
+  const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.88 });
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return `data:image/jpeg;base64,${btoa(bin)}`;
+}
