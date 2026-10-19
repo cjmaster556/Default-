@@ -144,4 +144,6 @@ jobs:
           curl -sS --max-time 20 "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard" | jq -c '[.events[0:1][] | {name: .shortName, links: [.links[]? | {rel, href}]}]' | cut -c1-1500
           echo "== summary header (to open a game that isn't on the scoreboard)"
           curl -sS --max-time 20 "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401872660" | jq -c '.header | {keys: keys, id, week, season, links: [.links[]? | {rel, href}][0:4], comp: (.competitions[0] | {keys: keys, date, status: .status.type, broadcasts, c0: (.competitors[0] | {keys: keys, team: (.team | {keys: keys, logos: .logos[0:1]}), score, record, winner, homeAway})})}' | cut -c1-3000
+          echo "== phone reports (notification pictures)"
+          curl -sS --max-time 20 "$SERVER/diag" | jq -c '.[0:8][]' | cut -c1-700
           echo "== logo proxy"; curl -sS -o /dev/null -w "%{http_code} %{content_type} %{size_download}\n" "$SERVER/logo?src=https://a.espncdn.com/i/teamlogos/nfl/500/buf.png"

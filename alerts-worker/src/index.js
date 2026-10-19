@@ -66,6 +66,10 @@ async function route(request, env) {
   if (request.method === "GET" && url.pathname.startsWith("/espn/")) return proxyEspn(url);
   if (request.method === "GET" && /^\/(nhl|nba)\//.test(url.pathname)) return proxyLeague(url);
   if (request.method === "GET" && url.pathname === "/videos") return videos(env, url.searchParams.get("league"));
+  if (request.method === "GET" && url.pathname === "/diag") {
+    const row = await env.DB.prepare("SELECT v FROM config WHERE k = 'diag'").first();
+    return json(row ? JSON.parse(row.v) : []);
+  }
   if (request.method === "GET" && url.pathname === "/logo") return logoImage(url.searchParams.get("src"));
   if (request.method !== "POST") return json({ error: "Not found" }, 404);
 
@@ -76,6 +80,14 @@ async function route(request, env) {
     return json({ ok: true });
   }
   if (url.pathname === "/test") return sendTest(env, body);
+  if (url.pathname === "/diag") {
+    // Phones report how drawing the notification picture went; keep the latest few.
+    const row = await env.DB.prepare("SELECT v FROM config WHERE k = 'diag'").first();
+    const list = row ? JSON.parse(row.v) : [];
+    list.unshift({ at: new Date().toISOString(), ...Object.fromEntries(Object.entries(body || {}).slice(0, 12).map(([k, v]) => [k, String(v).slice(0, 300)])) });
+    await env.DB.prepare("INSERT INTO config (k, v) VALUES ('diag', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind(JSON.stringify(list.slice(0, 20))).run();
+    return json({ ok: true });
+  }
   return json({ error: "Not found" }, 404);
 }
 

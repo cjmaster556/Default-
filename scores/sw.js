@@ -1,6 +1,6 @@
 // Network-first for the app's own files so updates show up right away, with a
 // cached copy as the fallback when offline. Score requests go straight to ESPN.
-const CACHE = "scoreline-v31";
+const CACHE = "scoreline-v32";
 importScripts("config.js");
 const LOGOS = "scoreline-logos";
 const SHELL = ["./", "index.html", "style.css", "app.js", "config.js", "demo.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
@@ -82,9 +82,35 @@ self.addEventListener("push", (e) => {
   // this file now and then, instead of only when the app is opened.
   self.registration.update().catch(() => {});
   // Never hold a notification up for long waiting on the picture.
-  const picture = d.card ? Promise.race([drawCard(d.card).catch(() => null), new Promise((r) => setTimeout(() => r(null), 4000))]) : Promise.resolve(null);
-  e.waitUntil(picture.then(show));
+  const t0 = Date.now();
+  let problem = "";
+  const picture = d.card
+    ? Promise.race([
+        drawCard(d.card).catch((err) => ((problem = String(err?.message || err)), null)),
+        new Promise((r) => setTimeout(() => ((problem ||= "timed out"), r(null)), 4000)),
+      ])
+    : Promise.resolve(null);
+  e.waitUntil(
+    picture.then(async (image) => {
+      await show(image);
+      // Tell the server how drawing went for test alerts and failures, to fix problems on real phones.
+      if (d.card && (d.tag === "scoreline-test" || !image)) {
+        const shown = (await self.registration.getNotifications({ tag: d.tag }))[0];
+        await report({ tag: d.tag, drawn: image ? image.length : 0, shownImage: shown?.image ? shown.image.length : 0, ms: Date.now() - t0, problem, offscreen: typeof OffscreenCanvas });
+      }
+    })
+  );
 });
+
+async function report(info) {
+  const server = String(self.SCORELINE_CONFIG?.alertsServer || "").replace(/\/$/, "");
+  if (!server) return;
+  try {
+    await fetch(`${server}/diag`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...info, v: CACHE, ua: navigator.userAgent }) });
+  } catch {
+    /* nothing to do */
+  }
+}
 
 // Team logos come through the alerts server (so they can be drawn) and are kept for next time.
 async function logoBitmap(src) {
