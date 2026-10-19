@@ -1,6 +1,6 @@
 // Network-first for the app's own files so updates show up right away, with a
 // cached copy as the fallback when offline. Score requests go straight to ESPN.
-const CACHE = "scoreline-v37";
+const CACHE = "scoreline-v38";
 importScripts("config.js");
 const LOGOS = "scoreline-logos";
 const SHELL = ["./", "index.html", "style.css", "app.js", "config.js", "demo.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/badge-96.png"];
@@ -123,8 +123,14 @@ async function report(info) {
 }
 
 // Team logos come through the alerts server (so they can be drawn) and are kept for next time.
+// The dark-background version of an ESPN logo first (the Rams' navy logo is white there), then the regular one.
 async function logoBitmap(src) {
   if (!src) return null;
+  const dark = String(src).replace(/(\/i\/teamlogos\/[a-z]+\/)500\//, "$1500-dark/");
+  return (dark !== src && (await logoBitmapFrom(dark).catch(() => null))) || logoBitmapFrom(src);
+}
+
+async function logoBitmapFrom(src) {
   const server = String(self.SCORELINE_CONFIG?.alertsServer || "").replace(/\/$/, "");
   const url = server ? `${server}/logo?src=${encodeURIComponent(src)}` : src;
   const cache = await caches.open(LOGOS);

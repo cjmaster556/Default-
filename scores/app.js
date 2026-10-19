@@ -501,11 +501,17 @@
     return ok(alt) ? `#${alt}` : "#3a3a3c";
   }
 
+  // ESPN draws every team logo twice: for light backgrounds and for dark ones
+  // (the Rams' navy logo is white there). The app is dark, so use the dark one.
+  const darkLogo = (src) => String(src || "").replace(/(\/i\/teamlogos\/[a-z]+\/)500\//, "$1500-dark/");
+
   function logo(team, size = "md") {
     const blank = `<span class="logo logo-${size} logo-blank" style="--team:${teamColor(team)}"></span>`;
     if (!team?.logo) return blank;
-    // If the logo can't load, swap in a team-colored dot rather than a broken image.
-    return `<img class="logo logo-${size}" src="${esc(team.logo)}" alt="" loading="lazy" onerror="this.outerHTML=this.dataset.fallback" data-fallback="${esc(blank)}" />`;
+    const dark = darkLogo(team.logo);
+    // If the dark logo is missing, use the regular one; if that fails too, a team-colored dot.
+    return `<img class="logo logo-${size}" src="${esc(dark)}" alt="" loading="lazy" data-light="${dark !== team.logo ? esc(team.logo) : ""}"
+      onerror="if(this.dataset.light){this.src=this.dataset.light;this.dataset.light=''}else{this.outerHTML=this.dataset.fallback}" data-fallback="${esc(blank)}" />`;
   }
 
   const recordText = (c) => c?.records?.[0]?.summary || c?.records?.[0]?.displayValue || "";
@@ -3630,7 +3636,11 @@
 
   // Logos come through the alerts server so the picture can be saved (browsers
   // won't export a canvas that drew images from a site that didn't allow it).
-  function loadLogo(src) {
+  async function loadLogo(src) {
+    return (src && (await loadLogoFrom(darkLogo(src)))) || loadLogoFrom(src);
+  }
+
+  function loadLogoFrom(src) {
     return new Promise((resolve) => {
       if (!src || !ALERTS_SERVER || demoMode) return resolve(null);
       const img = new Image();

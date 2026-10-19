@@ -52,6 +52,8 @@ Plain HTML/CSS/JS, no build step. `app.js` is one IIFE (about 3,000 lines), orga
   With a month, ESPN ignores `seasontype=3` and caps at 300 games, so events are filtered on `season.type === 3`, and MLB's
   late-September Wild Card days are fetched one by one (September is mostly regular season).
   Round names come from `notes[0].headline` (series.title is just "Playoff Series"); "If Necessary" placeholder games and TBD teams are skipped.
+- **Logos**: `logo()` uses ESPN's dark-background variant (`/500-dark/`, via `darkLogo`) since the app is dark (the Rams' navy logo
+  vanished on blue), falling back to the regular logo, then a team-colored dot. The share card and notification pictures do the same.
 - **Share card** (`scoreCard`): 1080×1080 canvas in team colors; logos load through the Worker's `/logo` so the canvas can be exported.
 - **Service worker** (`sw.js`): network-first with `cache: "no-cache"`. **Bump `CACHE` (scoreline-vN) with each release.**
   The app reloads itself when a new version takes over.
