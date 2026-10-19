@@ -1,9 +1,9 @@
 // Network-first for the app's own files so updates show up right away, with a
 // cached copy as the fallback when offline. Score requests go straight to ESPN.
-const CACHE = "scoreline-v35";
+const CACHE = "scoreline-v36";
 importScripts("config.js");
 const LOGOS = "scoreline-logos";
-const SHELL = ["./", "index.html", "style.css", "app.js", "config.js", "demo.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
+const SHELL = ["./", "index.html", "style.css", "app.js", "config.js", "demo.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/badge-96.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
@@ -75,7 +75,7 @@ self.addEventListener("push", (e) => {
       silent: !!d.silent,
       // Collapsed, Android only shows the small square icon, so that's the two teams' logos.
       icon: art?.icon || "icons/icon-192.png",
-      badge: "icons/icon-192.png",
+      badge: "icons/badge-96.png",
       ...(art?.image ? { image: art.image } : {}),
       data: { url: d.url || self.registration.scope },
     });

@@ -688,7 +688,7 @@
         tag: ev._key,
         renotify: true,
         icon: "icons/icon-192.png",
-        badge: "icons/icon-192.png",
+        badge: "icons/badge-96.png",
         data: { url: `${location.origin}${location.pathname}${location.search}#${ev._league}/${ev.id}` },
       });
     } catch {
