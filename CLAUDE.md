@@ -95,6 +95,19 @@ Cloudflare Worker on the free plan, with a D1 database (`schema.sql`: subs, game
   The **"Check the live server"** step logs real ESPN, YouTube, NHL and NBA data shapes, and is the way to see live data, because this sandbox can't reach those hosts.
   Read it with the GitHub MCP tools (actions_list, then get_job_logs).
 
+## Android app (`android-app/`)
+
+The "middle path" toward an APK (user asked to pace it a little each day): a Capacitor 8 shell that loads the live site
+(`server.url` in `capacitor.config.json`), so web changes reach it without a new APK. Native extras get added in `android/`.
+- `.github/workflows/android.yml` builds a signed release APK on pushes touching `android-app/` and uploads it to the
+  `android-latest` GitHub release (always the same download link). `versionCode` = the run number, so each build updates.
+- Signed with `android/app/scoreline.keystore` (password `scoreline`), committed on purpose so updates install over each
+  other; fine for a personal sideloaded app, replace it for any Play Store release.
+- Web Push doesn't work inside an Android WebView: alerts need Firebase Cloud Messaging (a later step, needs the user's
+  free Firebase project). Until then the user keeps the home-screen web app for alerts.
+- Plan, in order: 1) shell + build (done), 2) FCM push so alerts work in the APK, 3) native live score notification
+  (ongoing, custom layout), 4) home screen widget, 5) Watch buttons through native intents.
+
 ## Testing
 
 - Serve locally with `python3 -m http.server 8766` from the repo root, run in the background (sandbox resets kill `&` jobs).

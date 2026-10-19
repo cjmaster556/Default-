@@ -1,0 +1,12 @@
+{
+  "appId": "com.cjmaster556.scoreline",
+  "appName": "Scoreline",
+  "webDir": "www",
+  "server": {
+    "url": "https://cjmaster556.github.io/Default-/scores/",
+    "allowNavigation": ["cjmaster556.github.io", "scoreline-alerts.cjmaster556.workers.dev"]
+  },
+  "android": {
+    "backgroundColor": "#000000"
+  }
+}

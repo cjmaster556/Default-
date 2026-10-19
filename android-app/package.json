@@ -1,0 +1,15 @@
+{
+  "name": "scoreline-android",
+  "private": true,
+  "description": "Scoreline as an Android app: the live web app in a native shell, with native extras added over time.",
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/core": "8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3"
+  }
+}
