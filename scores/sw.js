@@ -1,6 +1,6 @@
 // Network-first for the app's own files so updates show up right away, with a
 // cached copy as the fallback when offline. Score requests go straight to ESPN.
-const CACHE = "scoreline-v32";
+const CACHE = "scoreline-v33";
 importScripts("config.js");
 const LOGOS = "scoreline-logos";
 const SHELL = ["./", "index.html", "style.css", "app.js", "config.js", "demo.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
@@ -196,11 +196,13 @@ async function drawCard(c) {
     if (t.score !== "") g.fillText(t.score, sx, 150);
     g.globalAlpha = 1;
   }
-  // Who has the ball.
+  // Who has the ball: a dot just outside that team's score, toward the middle.
   if (c.poss) {
+    g.font = font(700, 128);
+    const half = g.measureText((c.poss === "a" ? c.a : c.h).score || "0").width / 2;
     g.fillStyle = "#ffd60a";
     g.beginPath();
-    g.arc(c.poss === "a" ? 300 + 70 : W - 300 - 70, 92, 11, 0, Math.PI * 2);
+    g.arc(c.poss === "a" ? 300 + half + 16 : W - 300 - half - 16, 100, 11, 0, Math.PI * 2);
     g.fill();
   }
 
