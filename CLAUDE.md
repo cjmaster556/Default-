@@ -65,7 +65,8 @@ Cloudflare Worker on the free plan, with a D1 database (`schema.sql`: subs, game
   The live score notification is a silent push with the game's tag, sent when the status line changes, so it updates in place; alerts use
   the same tag and replace it. Every game push carries `card` (`scoreCardData`): the service worker draws a Google-style scoreboard
   picture from it (`drawCard`, OffscreenCanvas, logos via `/logo`, cached in the `scoreline-logos` cache) and sets it as the
-  notification `image` (shown when expanded). `sw.js` loads `config.js` (which sets `self.SCORELINE_CONFIG`) for the server URL. `gamex` remembers per-game status line, period, red zone and the close-game flag. A second pass runs 28 seconds later while a game is live. Web Push is hand-rolled (`src/push.js`, WebCrypto).
+  notification `image` (shown only when expanded; Android's rule). Collapsed, the `icon` is a square of both logos (`drawIcon`).
+  The card's bottom line falls back to the venue; "END QUARTER n" style last plays are left out of the text. `sw.js` loads `config.js` (which sets `self.SCORELINE_CONFIG`) for the server URL. `gamex` remembers per-game status line, period, red zone and the close-game flag. A second pass runs 28 seconds later while a game is live. Web Push is hand-rolled (`src/push.js`, WebCrypto).
   VAPID keys are generated on first run and stored in D1.
 - `/espn/...` passes through allowed ESPN feeds (including team schedule/roster). `/logo?src=` proxies espncdn.com logos with CORS for the share card. `/videos?league=` serves league YouTube videos, with channel IDs resolved from handles and cached.
   Videos are saved for 3 days because the RSS feed only holds 15.

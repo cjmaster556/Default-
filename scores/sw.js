@@ -1,6 +1,6 @@
 // Network-first for the app's own files so updates show up right away, with a
 // cached copy as the fallback when offline. Score requests go straight to ESPN.
-const CACHE = "scoreline-v33";
+const CACHE = "scoreline-v34";
 importScripts("config.js");
 const LOGOS = "scoreline-logos";
 const SHELL = ["./", "index.html", "style.css", "app.js", "config.js", "demo.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
@@ -66,16 +66,17 @@ self.addEventListener("push", (e) => {
   } catch {
     d = { body: e.data ? e.data.text() : "" };
   }
-  const show = (image) =>
+  const show = (art) =>
     self.registration.showNotification(d.title || "Scoreline", {
       body: d.body || "",
       tag: d.tag,
       // Live score updates replace the game's notification quietly; alerts buzz.
       renotify: !!d.tag && !d.silent,
       silent: !!d.silent,
-      icon: "icons/icon-192.png",
+      // Collapsed, Android only shows the small square icon, so that's the two teams' logos.
+      icon: art?.icon || "icons/icon-192.png",
       badge: "icons/icon-192.png",
-      ...(image ? { image } : {}),
+      ...(art?.image ? { image: art.image } : {}),
       data: { url: d.url || self.registration.scope },
     });
   // Alerts arrive while the app is closed, so check for a newer version of
@@ -91,8 +92,9 @@ self.addEventListener("push", (e) => {
       ])
     : Promise.resolve(null);
   e.waitUntil(
-    picture.then(async (image) => {
-      await show(image);
+    picture.then(async (art) => {
+      await show(art);
+      const image = art?.image;
       // Tell the server how drawing went for test alerts and failures, to fix problems on real phones.
       if (d.card && (d.tag === "scoreline-test" || !image)) {
         const shown = (await self.registration.getNotifications({ tag: d.tag }))[0];
@@ -170,6 +172,7 @@ async function drawCard(c) {
   }
 
   const [la, lh] = await Promise.all([logoBitmap(c.a.logo).catch(() => null), logoBitmap(c.h.logo).catch(() => null)]);
+  const icon = la && lh ? await drawIcon(la, lh) : null;
   g.textAlign = "center";
   g.textBaseline = "middle";
   const tile = 170;
@@ -227,9 +230,26 @@ async function drawCard(c) {
     g.fillText(c.line, W / 2, 425, W - 120);
   }
 
-  const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.88 });
+  return { image: await dataURL(canvas, "image/jpeg"), icon };
+}
+
+// The small square shown on the collapsed notification: away logo top-left, home bottom-right.
+async function drawIcon(la, lh) {
+  const S = 256;
+  const canvas = new OffscreenCanvas(S, S);
+  const g = canvas.getContext("2d");
+  g.fillStyle = "#2a2a2e";
+  roundRect(g, 0, 0, S, S, 48);
+  g.fill();
+  g.drawImage(la, 14, 14, 140, 140);
+  g.drawImage(lh, S - 154, S - 154, 140, 140);
+  return dataURL(canvas, "image/png");
+}
+
+async function dataURL(canvas, type) {
+  const blob = await canvas.convertToBlob(type === "image/jpeg" ? { type, quality: 0.88 } : { type });
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let bin = "";
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return `data:image/jpeg;base64,${btoa(bin)}`;
+  return `data:${type};base64,${btoa(bin)}`;
 }

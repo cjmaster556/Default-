@@ -433,6 +433,8 @@ function scoreCardData(league, ev, comp, away, home) {
   } else if (st === "post") {
     line = comp.notes?.[0]?.headline || "";
   }
+  // Between plays worth describing (halftime, before the game), show where it's played, like Google's card.
+  if (!line && comp.venue?.fullName) line = `Venue: ${comp.venue.fullName}`;
   const side = (c) => ({
     abbr: c.team.abbreviation || "",
     score: st === "pre" ? "" : String(num(c.score)),
@@ -558,7 +560,8 @@ async function checkOnce(env) {
       // Tapping the notification opens this game's screen.
       const url = `${SUBJECT}#${league}/${ev.id}`;
       const card = scoreCardData(league, ev, comp, away, home);
-      const last = sit.lastPlay?.text;
+      // ESPN logs period breaks as plays ("END QUARTER 2"); the status line already says so.
+      const last = /^end (of )?(the )?(\d|quarter|period|half|game|regulation)/i.test(sit.lastPlay?.text || "") ? "" : sit.lastPlay?.text;
       // Each alert says who it's for: followers of these teams whose settings want it.
       const alerts = [];
       const both = [ka, kh];
