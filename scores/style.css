@@ -710,6 +710,11 @@ main {
   height: 18px;
 }
 
+.logo-sm {
+  width: 28px;
+  height: 28px;
+}
+
 .logo-md {
   width: 40px;
   height: 40px;
