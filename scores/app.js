@@ -2986,8 +2986,11 @@
     const m = now.getMonth() + 1;
     const months = (year, list) => list.map((mm) => `${year}${mm}`);
     switch (league) {
-      case "mlb":
-        return months(m >= 3 ? y : y - 1, ["09", "10", "11"]);
+      case "mlb": {
+        // September is mostly regular season (too many games for one request), so take its last days one at a time.
+        const year = m >= 3 ? y : y - 1;
+        return [...["25", "26", "27", "28", "29", "30"].map((d) => `${year}09${d}`), ...months(year, ["10", "11"])];
+      }
       case "wnba":
         return months(m >= 4 ? y : y - 1, ["09", "10"]);
       case "nfl":
@@ -3005,9 +3008,15 @@
     const [standings, ...posts] = await Promise.allSettled([serverJSON(`/espn/apis/v2/sports/${path}/standings`), ...boards]);
     if (standings.status === "rejected" && posts.every((r) => r.status === "rejected")) throw standings.reason;
     const seen = new Set();
+    // ESPN ignores "postseason only" for whole months, so keep the playoff games here.
+    const isPost = (ev) => {
+      const comp = ev.competitions?.[0] || {};
+      if (ev.season?.type != null) return Number(ev.season.type) === 3 || ev.season.slug === "post-season";
+      return !!(comp.series || comp.notes?.[0]?.headline);
+    };
     const events = posts
       .flatMap((r) => (r.status === "fulfilled" ? r.value.events || [] : []))
-      .filter((ev) => !seen.has(ev.id) && seen.add(ev.id));
+      .filter((ev) => isPost(ev) && !seen.has(ev.id) && seen.add(ev.id));
     return { standings: standings.value || null, events };
   }
 

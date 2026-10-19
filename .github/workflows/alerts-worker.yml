@@ -135,13 +135,10 @@ jobs:
           echo "== win probability (finished NFL game)"
           id=$(curl -sS --max-time 20 "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard" | jq -r '[.events[] | select(.status.type.state == "post")][0].id')
           curl -sS --max-time 20 "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=$id" | jq -c '{n: ((.winprobability // []) | length), first: (.winprobability[0] // {}), last: (.winprobability[-1] // {}), playKeys: ((.drives.previous[0].plays[0] // {}) | keys)}' | cut -c1-900
-          echo "== playoffs view: the exact requests the app makes"
-          for lg in baseball/mlb basketball/wnba; do
-            for m in 09 10 11; do
-              code=$(curl -sS --max-time 30 -o /tmp/p.json -w "%{http_code}" "https://site.api.espn.com/apis/site/v2/sports/$lg/scoreboard?seasontype=3&dates=2026$m&limit=300")
-              echo "$lg 2026$m -> $code $(jq -c '{n: (.events | length), first: (.events[0] | {name, note: .competitions[0].notes[0].headline, teams: [.competitions[0].competitors[] | {abbr: .team.abbreviation, name: .team.displayName, id: .team.id}]})}' /tmp/p.json 2>/dev/null | cut -c1-500)"
-            done
-            get "/espn/apis/v2/sports/$lg/standings" | jq -c '{groups: [.children[]? | {name, n: (.standings.entries | length), kids: ([.children[]?] | length)}], seedSample: ([.children[0].standings.entries[0:3][]? | {t: .team.abbreviation, seed: ([.stats[] | select(.name == "playoffSeed")][0].displayValue)}])}' | cut -c1-600
+          echo "== playoffs view: season markers and late-September days"
+          curl -sS --max-time 30 "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?seasontype=3&dates=202609&limit=300" | jq -c '[.events[] | .season] | group_by(.) | map({s: .[0], n: length})' | cut -c1-400
+          for d in 20260929 20260930; do
+            curl -sS --max-time 30 "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?seasontype=3&dates=$d&limit=300" | jq -c --arg d "$d" '{d: $d, n: (.events | length), games: [.events[] | {season: .season, note: .competitions[0].notes[0].headline, name: .shortName}]}' | cut -c1-700
           done
           echo "== ESPN app links on events (for the Watch button)"
           curl -sS --max-time 20 "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard" | jq -c '[.events[0:2][] | {name: .shortName, links: [.links[]? | {rel, href}], compLinks: [.competitions[0].links[]? | {rel, href}], bc: .competitions[0].broadcasts, geo: .competitions[0].geoBroadcasts[0:2]}]' | cut -c1-3000
