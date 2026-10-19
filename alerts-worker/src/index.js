@@ -413,6 +413,25 @@ function isLateClose(league, status, margin) {
 
 const LEAGUE_LABEL = { nfl: "NFL", cfb: "College Football", nba: "NBA", wnba: "WNBA", mlb: "MLB", nhl: "NHL", pga: "PGA Tour", lpga: "LPGA" };
 
+// What the phone needs to draw a mini leaderboard picture: the top three, plus this phone's golfers.
+function golfCardData(league, ev, field, s) {
+  const pos = (c) => {
+    const n = field.findIndex((o) => o.score === c.score) + 1;
+    return `${field.filter((o) => o.score === c.score).length > 1 ? "T" : ""}${n}`;
+  };
+  const row = (c) => ({ pos: pos(c), name: c.athlete?.shortName || c.athlete?.displayName || "", score: c.score || "", mine: s.follows.has(`${league}:${c.id}`) });
+  const top = field.slice(0, 3);
+  const mine = field.slice(3).filter((c) => s.follows.has(`${league}:${c.id}`)).slice(0, 2);
+  const comp = ev.competitions?.[0] || {};
+  return {
+    golf: true,
+    league: LEAGUE_LABEL[league] || "",
+    title: ev.name || "",
+    status: comp.status?.type?.state === "post" ? "Final" : comp.status?.period ? `Round ${comp.status.period}` : "",
+    rows: [...top, ...mine].map(row),
+  };
+}
+
 // Golf: a followed golfer takes (or ties for) the lead, and the tournament's final result.
 function golfAlerts(env, league, ev, subs, extras, writes, sends, now) {
   const comp = ev.competitions?.[0] || {};
@@ -446,7 +465,11 @@ function golfAlerts(env, league, ev, subs, extras, writes, sends, now) {
         .map(({ c, pos, tied }) => `${c.athlete.shortName || c.athlete.displayName} ${tied ? "T" : ""}${pos} (${c.score})`);
       message = { title: `Final: ${winner.athlete.displayName} wins`, body: [ev.name, mine.join(" · ")].filter(Boolean).join("\n") };
     } else if (st === "in" && s.settings.scores !== "off") {
-      const newLeader = field.find((c) => leaders.includes(String(c.id)) && !before.has(String(c.id)) && s.follows.has(`${league}:${c.id}`));
+      // New to the lead, or out on their own after sharing it.
+      const wasShared = [...before].filter(Boolean).length > 1;
+      const newLeader = field.find(
+        (c) => leaders.includes(String(c.id)) && (!before.has(String(c.id)) || (wasShared && leaders.length === 1)) && s.follows.has(`${league}:${c.id}`)
+      );
       if (newLeader) {
         const tied = leaders.length > 1;
         message = {
@@ -456,7 +479,7 @@ function golfAlerts(env, league, ev, subs, extras, writes, sends, now) {
       }
     }
     if (!message || s.quiet) continue;
-    sends.push(deliver(env, s, { ...message, tag: key, url }));
+    sends.push(deliver(env, s, { ...message, tag: key, url, card: golfCardData(league, ev, field, s) }));
   }
   return st === "in";
 }

@@ -1,6 +1,6 @@
 // Network-first for the app's own files so updates show up right away, with a
 // cached copy as the fallback when offline. Score requests go straight to ESPN.
-const CACHE = "scoreline-v40";
+const CACHE = "scoreline-v41";
 importScripts("config.js");
 const LOGOS = "scoreline-logos";
 const SHELL = ["./", "index.html", "style.css", "app.js", "config.js", "demo.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/badge-96.png"];
@@ -163,8 +163,51 @@ function roundRect(g, x, y, w, h, r) {
   g.closePath();
 }
 
+// A mini leaderboard for golf alerts: tournament, round, top three and your golfers.
+async function drawGolfCard(c) {
+  const W = 1000;
+  const H = 500;
+  const canvas = new OffscreenCanvas(W, H);
+  const g = canvas.getContext("2d");
+  const font = (weight, size) => `${weight} ${size}px Roboto, "Google Sans", system-ui, sans-serif`;
+  const bg = g.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, "#1f6b43");
+  bg.addColorStop(1, "#0b2a1b");
+  g.fillStyle = bg;
+  g.fillRect(0, 0, W, H);
+  g.textBaseline = "middle";
+  g.textAlign = "left";
+  g.fillStyle = "#fff";
+  g.font = font(700, 40);
+  g.fillText(c.title, 50, 50, W - 100);
+  g.fillStyle = c.status === "Final" ? "#d9d9de" : "#ff8a80";
+  g.font = font(700, 30);
+  g.fillText([c.league, c.status].filter(Boolean).join(" · "), 50, 95);
+  const rows = (c.rows || []).slice(0, 5);
+  const rowH = Math.min(78, 350 / Math.max(rows.length, 1));
+  rows.forEach((r, i) => {
+    const y = 135 + i * rowH + rowH / 2;
+    g.fillStyle = r.mine ? "rgba(255,214,10,0.2)" : "rgba(255,255,255,0.08)";
+    roundRect(g, 40, y - rowH / 2 + 5, W - 80, rowH - 10, 18);
+    g.fill();
+    g.textAlign = "left";
+    g.fillStyle = "rgba(255,255,255,0.75)";
+    g.font = font(700, 34);
+    g.fillText(r.pos, 70, y);
+    g.fillStyle = r.mine ? "#ffd60a" : "#fff";
+    g.font = font(600, 38);
+    g.fillText(r.name, 170, y, 600);
+    g.textAlign = "right";
+    g.fillStyle = /^-/.test(r.score) ? "#ff8a80" : "#fff";
+    g.font = font(800, 42);
+    g.fillText(r.score, W - 70, y);
+  });
+  return { image: await dataURL(canvas, "image/jpeg"), icon: null };
+}
+
 async function drawCard(c) {
   if (typeof OffscreenCanvas === "undefined") return null;
+  if (c.golf) return drawGolfCard(c);
   const W = 1000;
   const H = 500;
   const canvas = new OffscreenCanvas(W, H);

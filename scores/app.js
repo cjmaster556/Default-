@@ -1486,6 +1486,15 @@
         ${st !== "post" ? watchButtons(comp, ev) : ""}
         ${tv ? `<p class="gd-tv">${esc(`${st === "in" ? "Live on" : st === "pre" ? "On" : "Aired on"} ${tv}`)}</p>` : ""}
       </div>
+      ${(() => {
+        const mine = field.filter((r) => state.favorites.has(r.key));
+        return mine.length
+          ? `<section class="gcard golf-board"><h3>Your golfers</h3><ol class="golf-list full">${mine
+              .map((r) => golfRow(r, { full: true }) + (open === `mine:${r.key}` ? golfScorecard(r) : ""))
+              .join("")
+              .replaceAll('data-golfer="', 'data-golfer="mine:')}</ol></section>`
+          : "";
+      })()}
       ${
         field.length
           ? `<section class="gcard golf-board">
@@ -1554,7 +1563,7 @@
     if (!og || !isGolf(og.event._league)) return;
     const follow = e.target.closest("[data-follow-golfer]");
     if (follow) {
-      const k = follow.dataset.followGolfer;
+      const k = follow.dataset.followGolfer.replace(/^mine:/, "");
       const c = og.event.competitions?.[0]?.competitors?.find((x) => `${og.event._league}:${x.id}` === k);
       if (c) toggleFavorite(k, golferInfo(k, c));
       renderDetail();
@@ -1844,8 +1853,6 @@
     const og = state.openGame;
     if (!og) return;
     const ev = og.event;
-    // Golf has no score card to share (yet).
-    $("share-game").hidden = isGolf(ev._league);
     if (isGolf(ev._league)) return renderGolfDetail(ev);
     const { away, home } = sides(ev.competitions?.[0]);
     gameDialog.style.setProperty("--away", vividColor(away?.team));
@@ -3871,6 +3878,10 @@
   let shareFile = null;
 
   const shareText = (ev) => {
+    if (isGolf(ev._league)) {
+      const top = golfField(ev).slice(0, 3).map((r) => `${r.pos}. ${r.name} ${r.score}`);
+      return [`${ev.name} · ${golfStatus(ev)}`, ...top].join("\n");
+    }
     const { away, home } = sides(ev.competitions?.[0]);
     return gameState(ev) === "pre"
       ? `${away?.team?.abbreviation} at ${home?.team?.abbreviation} · ${startText(ev, true)}`
@@ -3896,7 +3907,80 @@
     });
   }
 
+  // Golf's share picture: the tournament and its top five, in golf green.
+  async function golfShareCard(ev) {
+    const S = 1080;
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = S;
+    const g = canvas.getContext("2d");
+    const bg = g.createLinearGradient(0, 0, 0, S);
+    bg.addColorStop(0, "#1f6b43");
+    bg.addColorStop(1, "#0a2a1a");
+    g.fillStyle = bg;
+    g.fillRect(0, 0, S, S);
+    const font = (weight, size) => `${weight} ${size}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    g.textBaseline = "middle";
+    g.textAlign = "center";
+    g.fillStyle = "rgba(255,255,255,0.8)";
+    g.font = font(700, 34);
+    g.fillText(byKey[ev._league].name.toUpperCase(), S / 2, 90);
+    g.fillStyle = "#fff";
+    g.font = font(800, 60);
+    g.fillText(ev.name, S / 2, 165, S - 120);
+    g.fillStyle = gameState(ev) === "in" ? "#ff8a80" : "rgba(255,255,255,0.85)";
+    g.font = font(700, 40);
+    g.fillText(golfStatus(ev), S / 2, 235, S - 120);
+
+    const field = golfField(ev);
+    // The top five, and your golfers if they're further back.
+    const rows = [...field.slice(0, 5), ...field.slice(5).filter((r) => state.favorites.has(r.key)).slice(0, 2)];
+    const flags = await Promise.all(rows.map((r) => loadLogoFrom(r.flag)));
+    const rowH = 96;
+    let y = 330;
+    rows.forEach((r, i) => {
+      const mine = state.favorites.has(r.key);
+      g.fillStyle = mine ? "rgba(255,214,10,0.18)" : i % 2 ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.09)";
+      roundedRect(g, 70, y - rowH / 2 + 6, S - 140, rowH - 12, 22);
+      g.fill();
+      g.textAlign = "left";
+      g.fillStyle = "rgba(255,255,255,0.75)";
+      g.font = font(700, 40);
+      g.fillText(r.pos, 100, y);
+      if (flags[i]) g.drawImage(flags[i], 200, y - 20, 56, 40);
+      g.fillStyle = mine ? "#ffd60a" : "#fff";
+      g.font = font(700, 44);
+      g.fillText(r.name, 280, y, 560);
+      g.textAlign = "right";
+      g.fillStyle = /^-/.test(r.score) ? "#ff8a80" : "#fff";
+      g.font = font(800, 50);
+      g.fillText(r.score, S - 100, y);
+      y += rowH;
+    });
+    if (!rows.length) {
+      g.textAlign = "center";
+      g.fillStyle = "rgba(255,255,255,0.8)";
+      g.font = font(600, 40);
+      g.fillText("The field tees off soon", S / 2, 520);
+    }
+    g.textAlign = "center";
+    g.fillStyle = "rgba(255,255,255,0.7)";
+    g.font = font(700, 32);
+    g.fillText(`Scoreline · ${new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`, S / 2, 1010);
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  }
+
+  function roundedRect(g, x, y, w, h, r) {
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.closePath();
+  }
+
   async function scoreCard(ev) {
+    if (isGolf(ev._league)) return golfShareCard(ev);
     const S = 1080;
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = S;
@@ -3987,7 +4071,8 @@
     } catch {
       /* drawing failed; text sharing still works */
     }
-    shareFile = blob ? new File([blob], `${away?.team?.abbreviation || "away"}-${home?.team?.abbreviation || "home"}.png`, { type: "image/png" }) : null;
+    const fileName = isGolf(ev._league) ? `${String(ev.name).replace(/[^\w]+/g, "-")}.png` : `${away?.team?.abbreviation || "away"}-${home?.team?.abbreviation || "home"}.png`;
+    shareFile = blob ? new File([blob], fileName, { type: "image/png" }) : null;
     if (blob) $("share-img").src = URL.createObjectURL(blob);
     $("share-image").hidden = !(shareFile && navigator.canShare?.({ files: [shareFile] }));
     $("save-image").hidden = !shareFile;
