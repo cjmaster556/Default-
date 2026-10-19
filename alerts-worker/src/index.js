@@ -14,6 +14,8 @@ const LEAGUES = {
   wnba: { path: "basketball/wnba" },
   mlb: { path: "baseball/mlb" },
   nhl: { path: "hockey/nhl" },
+  pga: { path: "golf/pga" },
+  lpga: { path: "golf/lpga" },
 };
 
 const SUBJECT = "https://cjmaster556.github.io/Default-/scores/";
@@ -256,7 +258,7 @@ async function logoImage(src) {
 // ---------- highlight videos ----------
 
 // Each league's official YouTube channel, by handle; the channel ID is looked up once and kept.
-const CHANNELS = { nfl: "@NFL", nba: "@NBA", wnba: "@WNBA", mlb: "@MLB", nhl: "@NHL", cfb: "@espncfb" };
+const CHANNELS = { nfl: "@NFL", nba: "@NBA", wnba: "@WNBA", mlb: "@MLB", nhl: "@NHL", cfb: "@espncfb", pga: "@PGATOUR", lpga: "@LPGA" };
 
 const decodeXml = (s) =>
   s
@@ -385,7 +387,7 @@ function sides(comp) {
 const num = (v) => Number(typeof v === "object" ? v?.value : v) || 0;
 const teamName = (c) => c?.team?.shortDisplayName || c?.team?.abbreviation || "";
 
-const SPORT = { nfl: "football", cfb: "football", nba: "basketball", wnba: "basketball", mlb: "baseball", nhl: "hockey" };
+const SPORT = { nfl: "football", cfb: "football", nba: "basketball", wnba: "basketball", mlb: "baseball", nhl: "hockey", pga: "golf", lpga: "golf" };
 
 // Is the game close enough that a score is worth an alert in "close games only" mode?
 function isClose(league, margin) {
@@ -409,7 +411,55 @@ function isLateClose(league, status, margin) {
   return false;
 }
 
-const LEAGUE_LABEL = { nfl: "NFL", cfb: "College Football", nba: "NBA", wnba: "WNBA", mlb: "MLB", nhl: "NHL" };
+const LEAGUE_LABEL = { nfl: "NFL", cfb: "College Football", nba: "NBA", wnba: "WNBA", mlb: "MLB", nhl: "NHL", pga: "PGA Tour", lpga: "LPGA" };
+
+// Golf: a followed golfer takes (or ties for) the lead, and the tournament's final result.
+function golfAlerts(env, league, ev, subs, extras, writes, sends, now) {
+  const comp = ev.competitions?.[0] || {};
+  const field = (comp.competitors || []).filter((c) => c.athlete).sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+  const key = `${league}:${ev.id}`;
+  const followers = subs.filter((s) => field.some((c) => s.follows.has(`${league}:${c.id}`)));
+  if (!followers.length || !field.length) return false;
+  const st = ev.status?.type?.state || comp.status?.type?.state || "pre";
+  const leaders = field.filter((c) => c.score === field[0].score).map((c) => String(c.id));
+  const x0 = extras.get(key) || {};
+  const x = { st, lead: leaders.join(",") };
+  if (x.st === x0.st && x.lead === x0.lead) return st === "in";
+  writes.push(
+    env.DB.prepare(`INSERT INTO gamex (key, x, updated) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET x = excluded.x, updated = excluded.updated`).bind(key, JSON.stringify(x), now)
+  );
+  extras.set(key, x);
+  // The first look only sets the baseline.
+  if (!("st" in x0)) return st === "in";
+
+  const url = `${SUBJECT}#${league}/${ev.id}`;
+  const before = new Set(String(x0.lead || "").split(","));
+  const round = comp.status?.period ? `Round ${comp.status.period}` : "";
+  for (const s of followers) {
+    let message = null;
+    if (x0.st !== "post" && st === "post") {
+      if (!s.settings.finals) continue;
+      const winner = field[0];
+      const mine = field
+        .map((c, i) => ({ c, pos: field.findIndex((o) => o.score === c.score) + 1, tied: field.filter((o) => o.score === c.score).length > 1, i }))
+        .filter(({ c }) => s.follows.has(`${league}:${c.id}`))
+        .map(({ c, pos, tied }) => `${c.athlete.shortName || c.athlete.displayName} ${tied ? "T" : ""}${pos} (${c.score})`);
+      message = { title: `Final: ${winner.athlete.displayName} wins`, body: [ev.name, mine.join(" · ")].filter(Boolean).join("\n") };
+    } else if (st === "in" && s.settings.scores !== "off") {
+      const newLeader = field.find((c) => leaders.includes(String(c.id)) && !before.has(String(c.id)) && s.follows.has(`${league}:${c.id}`));
+      if (newLeader) {
+        const tied = leaders.length > 1;
+        message = {
+          title: `${newLeader.athlete.displayName} ${tied ? "is tied for" : "takes"} the lead`,
+          body: [`${newLeader.score} · ${ev.name}`, round].filter(Boolean).join("\n"),
+        };
+      }
+    }
+    if (!message || s.quiet) continue;
+    sends.push(deliver(env, s, { ...message, tag: key, url }));
+  }
+  return st === "in";
+}
 
 // What the phone needs to draw a scoreboard picture for the notification.
 function scoreCardData(league, ev, comp, away, home) {
@@ -504,6 +554,10 @@ async function checkOnce(env) {
     if (!entry) continue;
     const [league, data] = entry;
     for (const ev of data.events || []) {
+      if (SPORT[league] === "golf") {
+        if (golfAlerts(env, league, ev, subs, extras, writes, sends, now)) busy = true;
+        continue;
+      }
       const comp = ev.competitions?.[0];
       const { away, home } = sides(comp);
       if (!away?.team || !home?.team) continue;

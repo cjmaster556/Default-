@@ -263,7 +263,43 @@
           ],
   };
 
+  // A golf tournament in its third round, shaped like ESPN's golf scoreboard.
+  function golfBoard(key) {
+    const names = key === "pga"
+      ? [["Scottie Scheffler", "S. Scheffler", "usa"], ["Rory McIlroy", "R. McIlroy", "nir"], ["Xander Schauffele", "X. Schauffele", "usa"], ["Collin Morikawa", "C. Morikawa", "usa"], ["Ludvig Aberg", "L. Aberg", "swe"], ["Tommy Fleetwood", "T. Fleetwood", "eng"], ["Viktor Hovland", "V. Hovland", "nor"], ["Hideki Matsuyama", "H. Matsuyama", "jpn"]]
+      : [["Nelly Korda", "N. Korda", "usa"], ["Jeeno Thitikul", "J. Thitikul", "tha"], ["Lydia Ko", "L. Ko", "nzl"], ["Ruoning Yin", "R. Yin", "chn"], ["Hannah Green", "H. Green", "aus"], ["Celine Boutier", "C. Boutier", "fra"]];
+    const totals = [-14, -12, -12, -10, -9, -9, -7, -6];
+    const fmt = (n) => (n === 0 ? "E" : n > 0 ? `+${n}` : String(n));
+    const competitors = names.map(([full, short, cc], i) => {
+      const holes = Array.from({ length: 6 + i }, (_, h) => ({ period: h + 1, value: [4, 3, 5, 4, 4, 3][h % 6] - (h % 4 === 0 ? 1 : 0), displayValue: "" }));
+      return {
+        id: String(9000 + i),
+        order: i + 1,
+        score: fmt(totals[i]),
+        athlete: { displayName: full, shortName: short, flag: { href: `https://a.espncdn.com/i/teamlogos/countries/500/${cc}.png` } },
+        linescores: [
+          { period: 1, value: 67, displayValue: "-5" },
+          { period: 2, value: 69, displayValue: "-3" },
+          { period: 3, value: 0, displayValue: fmt(totals[i] + 8), linescores: holes },
+        ],
+      };
+    });
+    const ev = {
+      id: key === "pga" ? "801" : "802",
+      name: key === "pga" ? "Butterfield Bermuda Championship" : "Buick LPGA Shanghai",
+      date: new Date(start - 2 * 86400000).toISOString(),
+      endDate: new Date(start + 86400000).toISOString(),
+      status: { period: 3, type: { state: "in", detail: "Round 3 - In Progress" } },
+      competitions: [{ status: { period: 3, type: { state: "in", detail: "Round 3 - In Progress" } }, broadcasts: [{ names: ["Golf Chnl"] }], competitors }],
+    };
+    return {
+      leagues: [{ calendar: [{ id: "800", label: "Shriners Children's Open", startDate: new Date(start - 9 * 86400000).toISOString(), endDate: new Date(start - 6 * 86400000).toISOString() }, { id: ev.id, label: ev.name, startDate: ev.date, endDate: ev.endDate }] }],
+      events: [ev],
+    };
+  }
+
   function scoreboard(key, cursor) {
+    if (key === "pga" || key === "lpga") return golfBoard(key);
     const b = boards[key];
     if (key === "nfl" || key === "cfb") {
       const data = b();

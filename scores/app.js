@@ -10,7 +10,10 @@
     { key: "wnba", name: "WNBA", sport: "basketball", path: "basketball/wnba", mode: "day" },
     { key: "mlb", name: "MLB", sport: "baseball", path: "baseball/mlb", mode: "day" },
     { key: "nhl", name: "NHL", sport: "hockey", path: "hockey/nhl", mode: "day" },
+    { key: "pga", name: "PGA Tour", short: "PGA", sport: "golf", path: "golf/pga", mode: "event" },
+    { key: "lpga", name: "LPGA", sport: "golf", path: "golf/lpga", mode: "event" },
   ];
+  const isGolf = (key) => byKey[key]?.sport === "golf";
   const byKey = Object.fromEntries(LEAGUES.map((l) => [l.key, l]));
   const shortName = (l) => l.short || l.name;
 
@@ -179,6 +182,8 @@
     params.set("limit", "300");
     if (league.mode === "day") {
       params.set("dates", cursor?.date || today());
+    } else if (league.mode === "event") {
+      if (cursor?.date) params.set("dates", cursor.date);
     } else if (cursor) {
       params.set("seasontype", cursor.seasonType);
       params.set("week", cursor.week);
@@ -212,6 +217,7 @@
   });
 
   async function fetchTeams(key) {
+    if (isGolf(key)) return fetchGolfers(key);
     const league = byKey[key];
     let list = [];
     if (demoMode) {
@@ -305,7 +311,13 @@
     ls.lastUpdated = new Date();
     const calendar = data.leagues?.[0]?.calendar;
 
-    if (league.mode === "week") {
+    if (league.mode === "event") {
+      // Golf: one tournament a week; the calendar lists the season's tournaments.
+      if (Array.isArray(calendar) && calendar.length && typeof calendar[0] === "object") {
+        ls.tournaments = calendar.filter((t) => t.startDate).map((t) => ({ id: String(t.id), label: t.label, start: t.startDate, end: t.endDate }));
+      }
+      ls.cursor = { ...(ls.cursor || {}), eventId: String(data.events?.[0]?.id || "") };
+    } else if (league.mode === "week") {
       ls.cursor = {
         season: data.season?.year ?? ls.cursor?.season,
         seasonType: data.season?.type ?? ls.cursor?.seasonType,
@@ -333,7 +345,7 @@
     }
   }
 
-  const teamIds = (ev) => (ev.competitions?.[0]?.competitors || []).map((c) => `${ev._league}:${c.team?.id}`);
+  const teamIds = (ev) => (ev.competitions?.[0]?.competitors || []).map((c) => `${ev._league}:${c.team?.id ?? c.id}`);
   const isFavGame = (ev) => teamIds(ev).some((k) => state.favorites.has(k));
 
   async function fetchHome() {
@@ -353,7 +365,7 @@
 
     const covered = new Set(events.flatMap(teamIds));
     const now = Date.now();
-    const need = favs.filter((f) => !covered.has(f.key) && !(state.nexts.get(f.key)?.at > now - NEXT_TTL));
+    const need = favs.filter((f) => !isGolf(f.league) && !covered.has(f.key) && !(state.nexts.get(f.key)?.at > now - NEXT_TTL));
     const nexts = await Promise.allSettled(need.map(fetchTeamNext));
 
     if (keys.length && failed === keys.length) throw new Error(boards.find((r) => r.reason)?.reason?.message || "Network error");
@@ -645,6 +657,7 @@
     const notifyOK = state.alerts && !state.pushActive && alertsSupported() && Notification.permission === "granted" && !inQuietHours();
     const set = alertSettings();
     for (const ev of alertEvents()) {
+      if (isGolf(ev._league)) continue;
       const reminded = state.reminders.has(ev._key);
       const followed = isFavGame(ev);
       const comp = ev.competitions?.[0] || {};
@@ -1293,6 +1306,18 @@
       return;
     }
 
+    if (league.mode === "event") {
+      const list = ls.tournaments || [];
+      const i = list.findIndex((t) => t.id === ls.cursor?.eventId);
+      toolbarEl.innerHTML = `
+        <button class="icon-btn" data-step="-1" aria-label="Previous tournament"${i <= 0 ? " disabled" : ""}>&#8249;</button>
+        <select id="event-select" aria-label="Tournament">
+          ${list.map((t, n) => `<option value="${n}"${n === i ? " selected" : ""}>${esc(t.label)}</option>`).join("") || "<option>This week</option>"}
+        </select>
+        <button class="icon-btn" data-step="1" aria-label="Next tournament"${i < 0 || i >= list.length - 1 ? " disabled" : ""}>&#8250;</button>`;
+      return;
+    }
+
     const current = ls.cursor ? `${ls.cursor.seasonType}-${ls.cursor.week}` : "";
     let weeks = ls.weeks;
     if (!weeks.length && ls.cursor?.week != null) weeks = [{ seasonType: ls.cursor.seasonType, week: ls.cursor.week, label: `Week ${ls.cursor.week}` }];
@@ -1359,9 +1384,195 @@
     statusEl.textContent = parts.join(" · ");
   }
 
+  // ---------- golf ----------
+
+  // One row per golfer, in leaderboard order, with ties ("T3"), today's score and holes played.
+  function golfField(ev) {
+    const comp = ev.competitions?.[0] || {};
+    const round = comp.status?.period || ev.status?.period || 0;
+    const rows = (comp.competitors || []).filter((c) => c.athlete).sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+    const ties = new Map();
+    for (const c of rows) ties.set(c.score, (ties.get(c.score) || 0) + 1);
+    let lastScore = null;
+    let lastPos = 0;
+    return rows.map((c, i) => {
+      const pos = c.score === lastScore ? lastPos : i + 1;
+      lastScore = c.score;
+      lastPos = pos;
+      const rounds = c.linescores || [];
+      const cur = rounds.find((r) => r.period === round) || rounds[rounds.length - 1];
+      const holes = cur?.linescores?.length || 0;
+      return {
+        c,
+        key: `${ev._league}:${c.id}`,
+        name: c.athlete.displayName || c.athlete.fullName || "",
+        short: c.athlete.shortName || c.athlete.displayName || "",
+        flag: c.athlete.flag?.href || "",
+        score: c.score ?? "",
+        pos: `${ties.get(c.score) > 1 ? "T" : ""}${pos}`,
+        today: cur?.displayValue ?? "",
+        thru: holes ? (holes >= 18 ? "F" : String(holes)) : "",
+        rounds,
+        round,
+      };
+    });
+  }
+
+  const golfScoreClass = (s) => (/^-/.test(String(s)) ? "under" : /^\+/.test(String(s)) ? "over" : "");
+
+  function golfStatus(ev) {
+    const comp = ev.competitions?.[0] || {};
+    const st = gameState(ev);
+    if (st === "post") return "Final";
+    const fmt = (iso) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    if (st === "pre") return `${fmt(ev.date)} – ${fmt(ev.endDate || comp.endDate || ev.date)}`;
+    return comp.status?.type?.detail || `Round ${comp.status?.period || ""}`;
+  }
+
+  function golfRow(r, opts = {}) {
+    const mine = state.favorites.has(r.key);
+    return `<li class="golf-row${mine ? " mine" : ""}" data-golfer="${esc(r.key)}">
+      <span class="g-pos">${esc(r.pos)}</span>
+      ${r.flag ? `<img class="g-flag" src="${esc(r.flag)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" />` : '<span class="g-flag"></span>'}
+      <span class="g-name">${mine ? "★ " : ""}${esc(opts.full ? r.name : r.short)}</span>
+      <span class="g-score ${golfScoreClass(r.score)}">${esc(r.score)}</span>
+      ${opts.full ? `<span class="g-today">${esc(r.today)}</span>` : ""}
+      <span class="g-thru">${esc(r.thru)}</span>
+    </li>`;
+  }
+
+  function golfCard(ev) {
+    const st = gameState(ev);
+    const field = golfField(ev);
+    // The top five, plus any golfers you follow further down.
+    const top = field.slice(0, 5);
+    const mine = field.slice(5).filter((r) => state.favorites.has(r.key));
+    const tv = broadcasts(ev.competitions?.[0] || {});
+    const label = [state.view === "home" ? shortName(byKey[ev._league]) : "", st !== "post" ? tv : ""].filter(Boolean).join(" · ");
+    return `
+      <article class="card golf-card state-${st}" data-key="${esc(ev._key)}" tabindex="0" aria-label="${esc(ev.name)}" style="--away:#1d5c3a;--home:#0f3b25">
+        ${label ? `<div class="card-label">${esc(label)}</div>` : ""}
+        <div class="golf-head">
+          <span class="golf-title">${esc(ev.name || ev.shortName)}</span>
+          <span class="status${st === "in" ? " live" : ""}">${esc(golfStatus(ev))}</span>
+        </div>
+        ${
+          field.length
+            ? `<ol class="golf-list">${top.map((r) => golfRow(r)).join("")}${mine.length ? `<li class="golf-gap"></li>${mine.map((r) => golfRow(r)).join("")}` : ""}</ol>`
+            : `<p class="meta">The field shows up here once play starts.</p>`
+        }
+      </article>`;
+  }
+
+  function renderGolfDetail(ev) {
+    const og = state.openGame;
+    const st = gameState(ev);
+    const comp = ev.competitions?.[0] || {};
+    const field = golfField(ev);
+    gameDialog.style.setProperty("--away", "#1d5c3a");
+    gameDialog.style.setProperty("--home", "#0f3b25");
+    $("game-league").textContent = byKey[ev._league].name;
+    const keys = gameOrder();
+    const i = keys.indexOf(og.key);
+    $("prev-game").disabled = i <= 0;
+    $("next-game").disabled = i < 0 || i >= keys.length - 1;
+    const tv = broadcasts(comp);
+    const open = og.golfer;
+    const scroll = detailEl.scrollTop;
+    detailEl.innerHTML = `
+      <div class="gd-hero golf-hero">
+        <h2 class="tp-name">${esc(ev.name)}</h2>
+        <p class="tp-sub${st === "in" ? " live" : ""}">${esc(golfStatus(ev))}</p>
+        ${st !== "post" ? watchButtons(comp, ev) : ""}
+        ${tv ? `<p class="gd-tv">${esc(`${st === "in" ? "Live on" : st === "pre" ? "On" : "Aired on"} ${tv}`)}</p>` : ""}
+      </div>
+      ${
+        field.length
+          ? `<section class="gcard golf-board">
+              <div class="golf-cols"><span>Pos</span><span></span><span>Player</span><span>Total</span><span>Today</span><span>Thru</span></div>
+              <ol class="golf-list full">${field
+                .map((r) => golfRow(r, { full: true }) + (open === r.key ? golfScorecard(r) : ""))
+                .join("")}</ol>
+            </section>`
+          : `<p class="loading">The leaderboard shows up here once play starts.</p>`
+      }`;
+    detailEl.scrollTop = scroll;
+    updateStuck();
+  }
+
+  // Tapping a golfer shows their rounds, and today's holes when ESPN has them.
+  function golfScorecard(r) {
+    const key = state.favorites.has(r.key);
+    const rounds = r.rounds.map((x) => `<span><small>R${esc(x.period)}</small><b>${esc(x.value || "–")}</b><i class="${golfScoreClass(x.displayValue)}">${esc(x.displayValue ?? "")}</i></span>`).join("");
+    const cur = r.rounds.find((x) => x.period === r.round) || r.rounds[r.rounds.length - 1];
+    const holes = (cur?.linescores || [])
+      .map((h, n) => `<span><small>${esc(h.period ?? n + 1)}</small><b class="${golfScoreClass(h.scoreType?.displayValue)}">${esc(h.value ?? h.displayValue ?? "")}</b></span>`)
+      .join("");
+    return `<li class="golf-card-open">
+      <div class="g-rounds">${rounds || '<span class="meta">No rounds yet</span>'}</div>
+      ${holes ? `<div class="g-holes">${holes}</div>` : ""}
+      <button class="follow-btn${key ? " on" : ""}" data-follow-golfer="${esc(r.key)}">${key ? "★ Following" : "☆ Follow"}</button>
+    </li>`;
+  }
+
+  const golferInfo = (key, c) => ({
+    key,
+    league: key.split(":")[0],
+    id: String(c.id),
+    abbr: c.athlete?.shortName || "",
+    name: c.athlete?.displayName || "",
+    short: c.athlete?.shortName || c.athlete?.displayName || "",
+    logo: c.athlete?.flag?.href || "",
+    color: "",
+    golfer: true,
+  });
+
+  // The picker's golfers: this week's field, plus last week's when this one hasn't started.
+  async function fetchGolfers(key) {
+    const first = await fetchScoreboard(key, null);
+    const boards = [first];
+    const now = Date.now();
+    const past = (first.leagues?.[0]?.calendar || []).filter((t) => t.endDate && Date.parse(t.endDate) < now).slice(-2);
+    for (const t of past) {
+      try {
+        boards.push(await fetchScoreboard(key, { date: ymd(new Date(Date.parse(t.start || t.startDate) + 36 * 3600000)) }));
+      } catch {
+        /* skip that week */
+      }
+    }
+    const list = new Map();
+    for (const b of boards) for (const ev of b.events || []) for (const c of ev.competitions?.[0]?.competitors || []) {
+      const k = `${key}:${c.id}`;
+      if (c.athlete && !list.has(k)) list.set(k, golferInfo(k, c));
+    }
+    if (!list.size) throw new Error("no golfers found");
+    return [...list.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  detailEl.addEventListener("click", (e) => {
+    const og = state.openGame;
+    if (!og || !isGolf(og.event._league)) return;
+    const follow = e.target.closest("[data-follow-golfer]");
+    if (follow) {
+      const k = follow.dataset.followGolfer;
+      const c = og.event.competitions?.[0]?.competitors?.find((x) => `${og.event._league}:${x.id}` === k);
+      if (c) toggleFavorite(k, golferInfo(k, c));
+      renderDetail();
+      if (state.view === "home") refresh();
+      else render();
+      return;
+    }
+    const row = e.target.closest("[data-golfer]");
+    if (row) {
+      og.golfer = og.golfer === row.dataset.golfer ? null : row.dataset.golfer;
+      renderDetail();
+    }
+  });
+
   // ---------- rendering: cards ----------
 
   function card(ev) {
+    if (isGolf(ev._league)) return golfCard(ev);
     const league = byKey[ev._league];
     const comp = ev.competitions?.[0] || {};
     const { away, home } = sides(comp);
@@ -1595,7 +1806,8 @@
 
   async function refreshDetail() {
     const og = state.openGame;
-    if (!og) return;
+    // Golf's leaderboard all comes with the scoreboard; there's no game summary to load.
+    if (!og || isGolf(og.event._league)) return;
     try {
       og.summary = await fetchSummary(og.event._league, og.event.id);
       // The summary header carries the freshest status and score for this game.
@@ -1632,6 +1844,9 @@
     const og = state.openGame;
     if (!og) return;
     const ev = og.event;
+    // Golf has no score card to share (yet).
+    $("share-game").hidden = isGolf(ev._league);
+    if (isGolf(ev._league)) return renderGolfDetail(ev);
     const { away, home } = sides(ev.competitions?.[0]);
     gameDialog.style.setProperty("--away", vividColor(away?.team));
     gameDialog.style.setProperty("--home", vividColor(home?.team));
@@ -2862,7 +3077,8 @@
 
   function tabChoices(tab) {
     const leagues = LEAGUES.map((l) => ({ key: l.key, label: shortName(l) }));
-    return tab === "standings" ? leagues : [{ key: "home", label: "★ My Teams" }, ...leagues];
+    // ESPN has no golf standings to show.
+    return tab === "standings" ? leagues.filter((l) => !isGolf(l.key)) : [{ key: "home", label: "★ My Teams" }, ...leagues];
   }
 
   function tabLeague(tab) {
@@ -3463,6 +3679,16 @@
     goTo();
   }
 
+  function goToTournament(idx) {
+    const ls = leagueState(state.view);
+    const t = ls.tournaments?.[idx];
+    if (!t) return;
+    // Ask for a day inside the tournament (its second day, safely past any time zone edge).
+    const d = new Date(Date.parse(t.start) + 36 * 3600000);
+    ls.cursor = { eventId: t.id, date: ymd(d) };
+    goTo();
+  }
+
   function goTo() {
     const ls = leagueState(state.view);
     ls.events = [];
@@ -3554,7 +3780,10 @@
     if (step && !step.disabled) {
       const n = Number(step.dataset.step);
       if (byKey[state.view].mode === "day") stepDay(n);
-      else {
+      else if (byKey[state.view].mode === "event") {
+        const ls = leagueState(state.view);
+        goToTournament((ls.tournaments || []).findIndex((t) => t.id === ls.cursor?.eventId) + n);
+      } else {
         const ls = leagueState(state.view);
         const idx = ls.weeks.findIndex((w) => w.seasonType === ls.cursor?.seasonType && w.week === ls.cursor?.week);
         goToWeek(idx + n);
@@ -3566,6 +3795,7 @@
 
   toolbarEl.addEventListener("change", (e) => {
     if (e.target.id === "week-select") goToWeek(Number(e.target.value));
+    if (e.target.id === "event-select") goToTournament(Number(e.target.value));
   });
 
   gamesEl.addEventListener("click", async (e) => {

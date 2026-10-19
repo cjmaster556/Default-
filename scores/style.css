@@ -2953,3 +2953,160 @@ table {
     object-fit: contain;
   }
 }
+
+/* ---------- golf ---------- */
+
+.golf-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.golf-title {
+  font-weight: 800;
+  font-size: 1.05rem;
+}
+
+.golf-head .status {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.golf-head .status.live {
+  color: var(--live);
+}
+
+.golf-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.golf-row {
+  display: grid;
+  grid-template-columns: 2.4em 20px 1fr 3em 2.4em;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.golf-list.full .golf-row {
+  grid-template-columns: 2.4em 20px 1fr 3em 3em 2.4em;
+  padding: 9px 0;
+  border-top: 1px solid var(--glass-line, var(--line));
+  cursor: pointer;
+}
+
+.golf-row.mine .g-name {
+  color: var(--gold);
+}
+
+.g-pos,
+.g-thru,
+.g-today {
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.g-flag {
+  width: 20px;
+  height: 14px;
+  object-fit: cover;
+  border-radius: 2px;
+}
+
+.g-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.g-score {
+  text-align: right;
+  font-weight: 800;
+}
+
+.under {
+  color: #ff6961;
+}
+
+.golf-gap {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--line);
+}
+
+.golf-cols {
+  display: grid;
+  grid-template-columns: 2.4em 20px 1fr 3em 3em 2.4em;
+  gap: 8px;
+  padding-bottom: 6px;
+  color: var(--soft, var(--muted));
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.golf-cols span:nth-child(3) {
+  text-align: left;
+}
+
+.golf-cols span:nth-child(4) {
+  text-align: right;
+}
+
+.golf-hero {
+  text-align: center;
+  padding-top: 8px;
+}
+
+.golf-hero .tp-sub.live {
+  color: #ff6961;
+}
+
+.golf-card-open {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 0 14px;
+}
+
+.g-rounds,
+.g-holes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.g-rounds span,
+.g-holes span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 2.6em;
+  padding: 6px 4px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  font-variant-numeric: tabular-nums;
+}
+
+.g-rounds small,
+.g-holes small {
+  color: var(--soft, var(--muted));
+  font-size: 0.7rem;
+}
+
+.g-rounds i {
+  font-style: normal;
+  font-size: 0.8rem;
+}
+
+.golf-card-open .follow-btn {
+  align-self: center;
+}

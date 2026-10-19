@@ -56,6 +56,12 @@ Plain HTML/CSS/JS, no build step. `app.js` is one IIFE (about 3,000 lines), orga
   With a month, ESPN ignores `seasontype=3` and caps at 300 games, so events are filtered on `season.type === 3`, and MLB's
   late-September Wild Card days are fetched one by one (September is mostly regular season).
   Round names come from `notes[0].headline` (series.title is just "Playoff Series"); "If Necessary" placeholder games and TBD teams are skipped.
+- **Golf** (PGA, LPGA; `isGolf`, mode "event"): one tournament per scoreboard; the calendar lists the season's tournaments
+  (toolbar select; `goToTournament` asks for `dates=` a day inside one, unverified against live ESPN). Competitors are golfers
+  (`c.id`, `c.athlete`, `c.score` to par, `c.order`, `c.linescores` per round, holes inside during play). `golfField` computes ties,
+  today and thru. `golfCard` shows the top 5 plus followed golfers; the game sheet becomes a leaderboard (`renderGolfDetail`),
+  tap a golfer for rounds and holes, and follow them there or in the picker (`fetchGolfers`: this week's field plus recent weeks').
+  No golf standings (ESPN returns none), no share card. Server: `golfAlerts` (followed golfer takes or ties the lead; final result).
 - **Logos**: `logo()` uses ESPN's dark-background variant (`/500-dark/`, via `darkLogo`) since the app is dark (the Rams' navy logo
   vanished on blue), falling back to the regular logo, then a team-colored dot. The share card and notification pictures do the same.
 - **Share card** (`scoreCard`): 1080×1080 canvas in team colors; logos load through the Worker's `/logo` so the canvas can be exported.
