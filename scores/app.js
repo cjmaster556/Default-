@@ -3502,6 +3502,20 @@
   });
 
   $("close-video").addEventListener("click", () => videoDialog.close());
+
+  // Going full screen from a player's own button turns the picture sideways, and back after.
+  document.addEventListener("fullscreenchange", () => {
+    const o = screen.orientation;
+    if (!o?.lock) return;
+    if (document.fullscreenElement?.matches?.("video, iframe, .video-frame")) o.lock("landscape").catch(() => {});
+    else if (!document.fullscreenElement) {
+      try {
+        o.unlock();
+      } catch {
+        /* nothing locked */
+      }
+    }
+  });
   $("video-more").addEventListener("click", (e) => {
     const row = e.target.closest("[data-more]");
     const pl = state.playlist;

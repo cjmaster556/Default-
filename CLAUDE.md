@@ -27,6 +27,10 @@ Plain HTML/CSS/JS, no build step. `app.js` is one IIFE (about 3,000 lines), orga
 - **Highlights**: ESPN summary `videos` are mp4 clips that play in-app. They arrive after games end, and there are none for Prime Video (TNF) games.
   League YouTube videos come from the Worker. The NFL blocks YouTube embedding, so `noEmbed.nfl` makes NFL videos open in YouTube.
   Other leagues play through the YouTube IFrame API; error 101/150 marks that league as no-embed.
+- **Rotation**: the manifest allows any orientation (it was locked to portrait, which blocked sideways video). Turning the phone
+  sideways with a video open makes the player fill the screen (CSS, landscape media query); a player's own full-screen button also
+  locks landscape (`fullscreenchange` + `screen.orientation.lock`). An installed app picks up manifest changes only when Chrome
+  refreshes it (can take a day or so).
 - **Watch buttons**: map ESPN broadcast names to apps. On Android they use `intent://` links with the app package and a
   web fallback. Chrome only opens apps through links the app registered. `sportscenter://` (ESPN) fell back to the website on the
   user's phone, so ESPN now asks the app to open the game's espn.com page (`espnGamePage`); unverified whether the app takes it.
