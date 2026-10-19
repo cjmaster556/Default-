@@ -19,7 +19,8 @@ Plain HTML/CSS/JS, no build step. `app.js` is one IIFE (about 3,000 lines), orga
   Standings, news, rankings and teams go through the Worker (`/espn/...`), because some ESPN feeds fail from the phone's browser.
 - **Leagues**: `LEAGUES` (nfl, cfb with `groups=80`, nba, wnba, mlb, nhl). Football is week-based; the others are day-based.
 - **Tabs**: Scores | Standings | Highlights | News (bottom bar). Routing uses the hash: `#nfl` for scores, `#standings/nhl`, `#news/home`.
-  Swiping sideways on the page moves between the top chips (`swipeChip`); `overscroll-behavior-x: none` stops Chrome's swipe-back.
+  Swiping sideways on the page moves between the top chips (`swipeChip`): the page follows the finger, vertical scroll is locked once a
+  swipe is sideways (non-passive touchmove), and it slides off/on. `overscroll-behavior-x: none` stops Chrome's swipe-back.
   `#nfl/401…` (notification links) opens that game after the league loads (`pendingGame`).
 - **Game sheet**: Apple-style hero (team-color split gradient from `vividColor`), Stats / Highlights / Plays / Standings tabs,
   odds (summary `pickcenter`), team stat bars, box score (`boxscore.players`), Watch buttons, swipe between games.

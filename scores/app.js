@@ -3711,28 +3711,38 @@
   });
 
   // Swipe sideways on the main page to move between the chips along the top
-  // (My Teams, NFL, College Football...), on every tab.
+  // (My Teams, NFL, College Football...), on every tab. The page follows the
+  // finger, and once a swipe is clearly sideways the page stops scrolling up and down.
   const mainEl = document.querySelector("main");
-  let pageTouch = null;
+  let drag = null;
 
-  function swipeChip(dir) {
+  function chipKeys() {
     const tab = state.tab;
     const keys = tab === "scores" ? ["home", ...LEAGUES.map((l) => l.key)] : tabChoices(tab).map((c) => c.key);
     const current = tab === "scores" ? state.view : tabLeague(tab);
-    const next = keys[keys.indexOf(current) + dir];
-    if (!next) return;
+    return { keys, i: keys.indexOf(current) };
+  }
+
+  function swipeChip(dir) {
+    const { keys, i } = chipKeys();
+    const next = keys[i + dir];
+    if (!next) return false;
     window.scrollTo(0, 0);
-    if (tab === "scores") setView(next);
+    if (state.tab === "scores") setView(next);
     else {
-      state.tabLeague[tab] = next;
+      state.tabLeague[state.tab] = next;
       syncHash();
       render();
       loadTab();
     }
-    mainEl.classList.remove("from-left", "from-right");
-    void mainEl.offsetWidth; // restart the animation
-    mainEl.classList.add(dir > 0 ? "from-right" : "from-left");
+    return true;
   }
+
+  const slide = (x, ms) => {
+    mainEl.style.transition = ms ? `transform ${ms}ms ease-out, opacity ${ms}ms ease-out` : "none";
+    mainEl.style.transform = x ? `translateX(${x}px)` : "";
+    mainEl.style.opacity = x ? String(Math.max(0.4, 1 - Math.abs(x) / window.innerWidth)) : "";
+  };
 
   mainEl.addEventListener(
     "touchstart",
@@ -3741,23 +3751,56 @@
       // Leave parts that scroll sideways themselves (wide tables, the bracket) alone.
       const scroller = e.target.closest(".table-scroll, .bracket");
       const scrolls = scroller && scroller.scrollWidth > scroller.clientWidth + 2;
-      pageTouch = e.touches.length > 1 || scrolls || e.target.closest("input, select") ? null : { x: t.clientX, y: t.clientY };
+      drag = e.touches.length > 1 || scrolls || e.target.closest("input, select") ? null : { x: t.clientX, y: t.clientY, at: Date.now(), mode: null, dx: 0 };
     },
     { passive: true }
   );
+
   mainEl.addEventListener(
-    "touchend",
+    "touchmove",
     (e) => {
-      if (!pageTouch) return;
-      const t = e.changedTouches[0];
-      const dx = t.clientX - pageTouch.x;
-      const dy = t.clientY - pageTouch.y;
-      pageTouch = null;
-      if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) swipeChip(dx < 0 ? 1 : -1);
+      if (!drag) return;
+      const t = e.touches[0];
+      const dx = t.clientX - drag.x;
+      const dy = t.clientY - drag.y;
+      if (!drag.mode) {
+        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+        drag.mode = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      }
+      if (drag.mode !== "x") return;
+      // Hold the page still vertically while it's being swiped sideways.
+      if (e.cancelable) e.preventDefault();
+      const { keys, i } = chipKeys();
+      const edge = (dx < 0 && i >= keys.length - 1) || (dx > 0 && i <= 0);
+      drag.dx = dx;
+      slide(edge ? dx * 0.25 : dx, 0);
     },
-    { passive: true }
+    { passive: false }
   );
-  mainEl.addEventListener("animationend", () => mainEl.classList.remove("from-left", "from-right"));
+
+  function endDrag() {
+    if (!drag) return;
+    const { mode, dx, at } = drag;
+    drag = null;
+    if (mode !== "x") return;
+    const w = window.innerWidth;
+    const fast = Math.abs(dx) > 40 && Math.abs(dx) / Math.max(1, Date.now() - at) > 0.45;
+    const dir = dx < 0 ? 1 : -1;
+    const { keys, i } = chipKeys();
+    if ((Math.abs(dx) > w * 0.25 || fast) && keys[i + dir]) {
+      // Slide this league off, swap in the next, and slide it in from the other side.
+      slide(-dir * w, 160);
+      setTimeout(() => {
+        swipeChip(dir);
+        slide(dir * w * 0.6, 0);
+        requestAnimationFrame(() => requestAnimationFrame(() => slide(0, 200)));
+      }, 160);
+    } else {
+      slide(0, 200);
+    }
+  }
+  mainEl.addEventListener("touchend", endDrag, { passive: true });
+  mainEl.addEventListener("touchcancel", endDrag, { passive: true });
 
   // Swipe sideways between games, like flipping through cards.
   let touch = null;

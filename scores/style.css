@@ -33,6 +33,11 @@ body {
   overscroll-behavior-x: none;
 }
 
+/* The page slides sideways while being swiped; never let that widen the page. */
+body {
+  overflow-x: clip;
+}
+
 button,
 select,
 input {
@@ -1033,13 +1038,11 @@ table {
   padding-top: 0;
 }
 
-.sheet-body.from-right,
-main.from-right {
+.sheet-body.from-right {
   animation: from-right 0.25s ease-out;
 }
 
-.sheet-body.from-left,
-main.from-left {
+.sheet-body.from-left {
   animation: from-left 0.25s ease-out;
 }
 
@@ -1733,9 +1736,7 @@ main.from-left {
   .card.scored,
   .sheet[open],
   .sheet-body.from-left,
-  .sheet-body.from-right,
-  main.from-left,
-  main.from-right {
+  .sheet-body.from-right {
     animation: none;
   }
   .ball,
