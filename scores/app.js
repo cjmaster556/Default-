@@ -74,6 +74,7 @@
     alertSettings: loadJSON(SETTINGS_KEY, {}),
     reminders: new Map(loadJSON(REMIND_KEY, []).map((r) => [r.key, r])), // event key -> { key, league, id, date, name }
     teamPage: null, // { league, id, tab, info, schedule, roster, news, clips, error }
+    pendingGame: null, // "nfl:401…" to open once its league loads (from a notification)
     alertSeen: new Map(), // event key -> { a, h, st } as of the last check
     seq: 0,
     timer: null,
@@ -418,6 +419,7 @@
     if (seq !== state.seq) return;
 
     syncOpenGame();
+    openPendingGame(view);
     syncClocks();
     // Scores keep updating behind the other tabs; only redraw what's on screen.
     if (state.tab === "scores") render();
@@ -686,7 +688,7 @@
         renotify: true,
         icon: "icons/icon-192.png",
         badge: "icons/icon-192.png",
-        data: { url: `${location.origin}${location.pathname}${location.search}#home` },
+        data: { url: `${location.origin}${location.pathname}${location.search}#${ev._league}/${ev.id}` },
       });
     } catch {
       /* notification couldn't be shown; nothing else to do */
@@ -1526,6 +1528,14 @@
     ensureGameFeeds(ev._league);
     // Keep the open game fresh even when it isn't on the current view's list.
     if (gameState(ev) === "in") schedule();
+  }
+
+  function openPendingGame(view) {
+    const key = state.pendingGame;
+    if (!key || view !== key.split(":")[0]) return;
+    state.pendingGame = null;
+    history.replaceState(null, "", `#${view}`);
+    if (findEvent(key)) openGame(key);
   }
 
   function stepGame(dir) {
@@ -3327,8 +3337,14 @@
   }
 
   // "#nba" is a scores view; "#standings/nfl", "#news/home" and the like pick a tab.
+  // "#nfl/401…" (from a notification) also opens that game once its league has loaded.
   function readHash() {
     const [a, b] = location.hash.slice(1).split("/");
+    if (byKey[a] && /^\d+$/.test(b || "")) {
+      state.pendingGame = `${a}:${b}`;
+      // Show the league's current games, where the game in the alert is.
+      leagueState(a).cursor = null;
+    }
     if (TAB_TITLES[a]) {
       state.tab = a;
       if (b && tabChoices(a).some((c) => c.key === b)) state.tabLeague[a] = b;
@@ -3758,7 +3774,7 @@
   window.addEventListener("hashchange", () => {
     const before = `${state.tab}:${state.view}`;
     readHash();
-    if (`${state.tab}:${state.view}` === before && state.tab === "scores") return;
+    if (`${state.tab}:${state.view}` === before && state.tab === "scores" && !state.pendingGame) return;
     render();
     if (state.tab === "scores") refresh();
     else loadTab();
@@ -3768,6 +3784,16 @@
     if (!document.hidden && state.tab !== "scores") loadTab();
     if (!document.hidden) refresh();
     else if (!alertsWatching()) clearTimeout(state.timer);
+  });
+
+  // A tapped notification, while the app was already open, says which game to show.
+  navigator.serviceWorker?.addEventListener("message", (e) => {
+    if (e.data?.type !== "open-url") return;
+    const hash = new URL(e.data.url, location.href).hash;
+    if (!hash) return;
+    for (const d of [teamDialog, alertsDialog, videoDialog, shareDialog]) if (d.open) d.close();
+    if (location.hash === hash) window.dispatchEvent(new HashChangeEvent("hashchange"));
+    else location.hash = hash;
   });
 
   alertsBtn.addEventListener("click", openAlertSettings);

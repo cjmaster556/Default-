@@ -488,7 +488,8 @@ async function checkOnce(env) {
       if (!prev) continue;
 
       const line = `${away.team.abbreviation} ${cur.a} – ${cur.h} ${home.team.abbreviation}`;
-      const url = `${SUBJECT}#${league}`;
+      // Tapping the notification opens this game's screen.
+      const url = `${SUBJECT}#${league}/${ev.id}`;
       const last = sit.lastPlay?.text;
       // Each alert says who it's for: followers of these teams whose settings want it.
       const alerts = [];
