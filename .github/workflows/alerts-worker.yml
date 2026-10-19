@@ -151,4 +151,17 @@ jobs:
           for u in nfl/500-dark/lar.png nfl/500-dark/buf.png nfl/500-dark/lv.png ncaa/500-dark/2483.png mlb/500-dark/nyy.png nhl/500-dark/bos.png nba/500-dark/lal.png wnba/500-dark/atl.png nfl/500-dark/zzz.png; do
             echo "$u $(curl -sS -o /dev/null -w '%{http_code} %{size_download}' "https://a.espncdn.com/i/teamlogos/$u")"
           done
+          echo "== golf (PGA / LPGA)"
+          for lg in pga lpga; do
+            curl -sS --max-time 30 "https://site.api.espn.com/apis/site/v2/sports/golf/$lg/scoreboard" > /tmp/g.json
+            echo "-- $lg scoreboard: $(jq -c '{keys: keys, leagues: [.leagues[]? | {name, abbreviation, season: .season.year, calendarN: (.calendar | length), cal0: (.calendar[0] | if type == "object" then {label, startDate, endDate, id} else . end)}], n: (.events | length)}' /tmp/g.json | cut -c1-700)"
+            jq -c '.events[0] | {keys: keys, id, name, shortName, date, endDate, status, tournament: (.tournament // null), compKeys: (.competitions[0] | keys), comp: (.competitions[0] | {id, date, status, venue: .venue, broadcasts, purse, n: (.competitors | length)})}' /tmp/g.json | cut -c1-2500
+            jq -c '.events[0].competitions[0].competitors[0:2][] | {keys: keys, id, order, sortOrder, status, score, athlete: (.athlete | {keys: keys, displayName, shortName, flag, headshot}), stats: .statistics[0:6], lsN: (.linescores | length), ls0: (.linescores[0] | {keys: keys, value, displayValue, period, holesN: (.linescores | length), hole0: .linescores[0]}), lsLast: (.linescores[-1] | {value, displayValue, period, holesN: (.linescores | length)})}' /tmp/g.json | cut -c1-3000
+          done
+          echo "-- golf leaderboard (site.web)"
+          curl -sS --max-time 30 "https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?league=pga" | jq -c '{keys: keys, ev: (.events[0] | {keys: keys, name, status: .status.type, comp: (.competitions[0] | {keys: keys, c0: (.competitors[0] | {keys: keys, status, score, stats: [.statistics[]? | {name, displayValue}][0:10]})})})}' | cut -c1-2500
+          echo "-- golf news / standings"
+          curl -sS --max-time 30 "https://site.api.espn.com/apis/site/v2/sports/golf/pga/news?limit=3" | jq -c '{n: (.articles | length), first: .articles[0].headline}'
+          curl -sS --max-time 30 -o /dev/null -w "standings %{http_code}\n" "https://site.api.espn.com/apis/v2/sports/golf/pga/standings"
+          curl -sS --max-time 30 "https://site.api.espn.com/apis/v2/sports/golf/pga/standings" | jq -c '{keys: keys, kids: [.children[]? | {name, n: (.standings.entries | length), e0: (.standings.entries[0] | {athlete: .athlete.displayName, team: .team.displayName, stats: [.stats[]? | {name, displayValue}][0:6]})}], direct: (.standings.entries[0:1] // null)}' 2>/dev/null | cut -c1-1500
           echo "== logo proxy"; curl -sS -o /dev/null -w "%{http_code} %{content_type} %{size_download}\n" "$SERVER/logo?src=https://a.espncdn.com/i/teamlogos/nfl/500/buf.png"
