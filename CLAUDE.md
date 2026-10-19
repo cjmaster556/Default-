@@ -48,7 +48,9 @@ Plain HTML/CSS/JS, no build step. `app.js` is one IIFE (about 3,000 lines), orga
   scoreboard (kept in `state.extraEvents`); notification links use it too. Opening a game from a team page re-raises the game sheet.
 - **Win probability** (`winProbCard`): summary `winprobability` (`homeWinPercentage` per `playId`); periods come from play ids in drives/plays.
 - **Playoffs** (Standings → Playoffs): `PLAYOFF_SPOTS` cut lines for the seeding race; bracket from postseason scoreboards.
-  ESPN's scoreboard rejects day ranges but takes whole months (`dates=202610&seasontype=3`), so `postseasonMonths` fetches each month.
+  ESPN's scoreboard rejects day ranges but takes whole months (`dates=202610`) or single days, so `postseasonMonths` fetches each.
+  With a month, ESPN ignores `seasontype=3` and caps at 300 games, so events are filtered on `season.type === 3`, and MLB's
+  late-September Wild Card days are fetched one by one (September is mostly regular season).
   Round names come from `notes[0].headline` (series.title is just "Playoff Series"); "If Necessary" placeholder games and TBD teams are skipped.
 - **Share card** (`scoreCard`): 1080×1080 canvas in team colors; logos load through the Worker's `/logo` so the canvas can be exported.
 - **Service worker** (`sw.js`): network-first with `cache: "no-cache"`. **Bump `CACHE` (scoreline-vN) with each release.**
