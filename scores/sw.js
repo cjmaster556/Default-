@@ -1,6 +1,6 @@
 // Network-first for the app's own files so updates show up right away, with a
 // cached copy as the fallback when offline. Score requests go straight to ESPN.
-const CACHE = "scoreline-v36";
+const CACHE = "scoreline-v37";
 importScripts("config.js");
 const LOGOS = "scoreline-logos";
 const SHELL = ["./", "index.html", "style.css", "app.js", "config.js", "demo.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/badge-96.png"];
@@ -95,6 +95,14 @@ self.addEventListener("push", (e) => {
     picture.then(async (art) => {
       await show(art);
       const image = art?.image;
+      // Once per version, tell the server this phone is running it (and what it was handed).
+      const seen = `./reported-${CACHE}`;
+      const cache = await caches.open(LOGOS);
+      if (!(await cache.match(seen))) {
+        await cache.put(seen, new Response("1"));
+        const shown = (await self.registration.getNotifications({ tag: d.tag }))[0];
+        await report({ tag: "version", badge: shown?.badge || "", icon: (shown?.icon || "").slice(0, 40), drawn: art?.image ? art.image.length : 0 });
+      }
       // Tell the server how drawing went for test alerts and failures, to fix problems on real phones.
       if (d.card && (d.tag === "scoreline-test" || !image)) {
         const shown = (await self.registration.getNotifications({ tag: d.tag }))[0];
