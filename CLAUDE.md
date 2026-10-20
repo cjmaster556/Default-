@@ -115,8 +115,9 @@ The "middle path" toward an APK (user asked to pace it a little each day): a Cap
   Worker secret, which the deploy workflow copies from the GitHub secret of the same name. Status bar icon: `ic_stat_scoreline`.
 - Installing: Chrome's direct download of the APK stalled at 100% (its safety scan); long-pressing scoreline.apk on the
   release page (github.com/cjmaster556/Default-/releases/tag/android-latest) and choosing "Download link" worked.
-  The user has build 1.0.1 installed and it runs. The bell is hidden in the APK (no Web Push in WebView), as expected.
-- Plan, in order: 1) shell + build (done), 2) FCM push so alerts work in the APK (built; needs the user's secret + new APK), 3) native live score notification
+  The user has the FCM build installed; alerts work in both the APK and the home-screen web app (confirmed with a test alert).
+  GitHub's secret scanning flagged the Firebase API key in google-services.json; that key is meant to ship inside apps, so it's fine.
+- Plan, in order: 1) shell + build (done), 2) FCM push so alerts work in the APK (done, confirmed on the phone), 3) native live score notification
   (ongoing, custom layout), 4) home screen widget, 5) Watch buttons through native intents.
 
 ## Testing
