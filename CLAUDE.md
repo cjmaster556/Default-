@@ -27,7 +27,7 @@ Plain HTML/CSS/JS, no build step. `app.js` is one IIFE (about 3,000 lines), orga
 - **Highlights**: ESPN summary `videos` are mp4 clips that play in-app. They arrive after games end, and there are none for Prime Video (TNF) games.
   ESPN news videos (type Media, in game Highlights and the News tab) play in-app too: `playNewsClip` fetches the item's
   `links.api.self` (content.core.api.espn.com/v1/video/clips/ID, CORS *, from the phone) for `videos[0].links.source.HD` mp4;
-  before this they opened espn.com, which the APK handed to the ESPN app.
+  before this they opened espn.com, which the APK handed to the ESPN app. Confirmed playing on the phone.
   League YouTube videos come from the Worker. The NFL blocks YouTube embedding, so `noEmbed.nfl` makes NFL videos open in YouTube.
   Other leagues play through the YouTube IFrame API; error 101/150 marks that league as no-embed.
 - **Rotation**: the manifest allows any orientation (it was locked to portrait, which blocked sideways video). Turning the phone
