@@ -3441,13 +3441,13 @@
     const rows = items
       .map((r) => {
         const moved = r.lastWeek ? r.lastWeek - r.rank : 0;
-        const trend = moved ? `<span class="trend ${moved > 0 ? "up" : "down"}">${moved > 0 ? "▲" : "▼"}${Math.abs(moved)}</span>` : '<span class="trend">–</span>';
-        const flag = r.code ? `https://a.espncdn.com/i/teamlogos/countries/500/${(flagCode[r.code] || r.code).toLowerCase()}.png` : "";
+        const trend = r.lastWeek == null ? (r.wins ? `<span class="trend">${esc(r.wins)}W</span>` : "") : moved ? `<span class="trend ${moved > 0 ? "up" : "down"}">${moved > 0 ? "▲" : "▼"}${Math.abs(moved)}</span>` : '<span class="trend">–</span>';
+        const flag = r.flag || (r.code ? `https://a.espncdn.com/i/teamlogos/countries/500/${(flagCode[r.code] || r.code).toLowerCase()}.png` : "");
         return `<tr class="${followed.has(r.name.toLowerCase()) ? "mine" : ""}">
           <td class="st-rank">${r.tied ? "T" : ""}${esc(r.rank)}</td>
           <th scope="row"><span class="st-team">${flag ? `<img class="g-flag" src="${esc(flag)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" />` : ""}<span class="st-name">${esc(r.name)}</span></span></th>
           <td>${trend}</td>
-          <td class="st-pts">${r.avg != null ? Number(r.avg).toFixed(2) : ""}</td>
+          <td class="st-pts">${r.value != null ? esc(r.value) : r.avg != null ? Number(r.avg).toFixed(2) : ""}</td>
         </tr>`;
       })
       .join("");
@@ -3456,12 +3456,12 @@
         <h3>${esc(data.title || "World Golf Ranking")}</h3>
         <div class="table-scroll">
           <table class="st-table">
-            <thead><tr><th></th><th></th><th></th><th>AVG</th></tr></thead>
+            <thead><tr><th></th><th></th><th></th><th>${esc(data.valueLabel || "AVG")}</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
       </section>
-      <p class="panel-note">Average ranking points per event, from the Official World Golf Ranking.</p>`;
+      <p class="panel-note">${league === "lpga" ? "Season points, from ESPN." : "Average ranking points per event, from the Official World Golf Ranking."}</p>`;
   }
 
   function rankingsHTML(data, variant) {

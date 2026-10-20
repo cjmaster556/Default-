@@ -681,7 +681,7 @@
   function feed(path) {
     if (/golf-rankings/.test(path)) {
       const names = /lpga/.test(path) ? ["Nelly Korda", "Jeeno Thitikul", "Lydia Ko"] : ["Scottie Scheffler", "Rory McIlroy", "Xander Schauffele"];
-      return { title: /lpga/.test(path) ? "Women's World Golf Ranking" : "Official World Golf Ranking", items: names.map((name, i) => ({ rank: i + 1, lastWeek: [1, 3, 2][i], name, code: ["USA", "NIR", "USA"][i], avg: 16.7 - i * 3.1 })) };
+      return /lpga/.test(path) ? { title: "Race to the CME Globe", valueLabel: "PTS", items: names.map((name, i) => ({ rank: i + 1, name, value: String(3200 - i * 450), wins: 3 - i })) } : { title: "Official World Golf Ranking", items: names.map((name, i) => ({ rank: i + 1, lastWeek: [1, 3, 2][i], name, code: ["USA", "NIR", "USA"][i], avg: 16.7 - i * 3.1 })) };
     }
     const tm = path.match(/\/sports\/[\w-]+\/([\w-]+)\/teams\/(\d+)\/(schedule|roster)/);
     const leagueOf = { nfl: "nfl", "college-football": "cfb", nba: "nba", wnba: "wnba", mlb: "mlb", nhl: "nhl" };
