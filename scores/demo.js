@@ -679,6 +679,10 @@
 
   // The app asks the alerts server for these; in the demo, answer from here.
   function feed(path) {
+    if (/golf-rankings/.test(path)) {
+      const names = /lpga/.test(path) ? ["Nelly Korda", "Jeeno Thitikul", "Lydia Ko"] : ["Scottie Scheffler", "Rory McIlroy", "Xander Schauffele"];
+      return { title: /lpga/.test(path) ? "Women's World Golf Ranking" : "Official World Golf Ranking", items: names.map((name, i) => ({ rank: i + 1, lastWeek: [1, 3, 2][i], name, code: ["USA", "NIR", "USA"][i], avg: 16.7 - i * 3.1 })) };
+    }
     const tm = path.match(/\/sports\/[\w-]+\/([\w-]+)\/teams\/(\d+)\/(schedule|roster)/);
     const leagueOf = { nfl: "nfl", "college-football": "cfb", nba: "nba", wnba: "wnba", mlb: "mlb", nhl: "nhl" };
     if (tm) return tm[3] === "schedule" ? teamSchedule(leagueOf[tm[1]], tm[2]) : teamRoster(leagueOf[tm[1]]);

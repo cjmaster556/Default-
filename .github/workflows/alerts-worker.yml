@@ -172,10 +172,6 @@ jobs:
           curl -sS --max-time 30 "https://site.api.espn.com/apis/site/v2/sports/golf/pga/news?limit=3" | jq -c '{n: (.articles | length), first: .articles[0].headline}'
           curl -sS --max-time 30 -o /dev/null -w "standings %{http_code}\n" "https://site.api.espn.com/apis/v2/sports/golf/pga/standings"
           curl -sS --max-time 30 "https://site.api.espn.com/apis/v2/sports/golf/pga/standings" | jq -c '{keys: keys, kids: [.children[]? | {name, n: (.standings.entries | length), e0: (.standings.entries[0] | {athlete: .athlete.displayName, team: .team.displayName, stats: [.stats[]? | {name, displayValue}][0:6]})}], direct: (.standings.entries[0:1] // null)}' 2>/dev/null | cut -c1-1500
-          echo "== golf season standings (ESPN core)"
-          for lg in pga lpga; do
-            curl -sS --max-time 20 "https://sports.core.api.espn.com/v2/sports/golf/leagues/$lg/seasons/2026/types/2/standings/0" > /tmp/st.json
-            echo "-- $lg: $(jq -c '{keys: keys, name, n: (.standings | length), e0: (.standings[0] | {keys: keys, athlete, records: [.records[]? | {name, displayValue, stats: [.stats[]? | {name, displayValue}][0:6]}][0:2]})}' /tmp/st.json | cut -c1-1500)"
-          done
-          echo "-- OWGR women? $(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' 'https://apiweb.owgr.com/api/owgr/rankings/getRankings?pageSize=2&pageNumber=1&gender=F')"
+          echo "== golf rankings through the server"
+          for lg in pga lpga; do get "/golf-rankings?league=$lg" | jq -c '{title, n: (.items | length), top: .items[0:2]}' | cut -c1-500; done
           echo "== logo proxy"; curl -sS -o /dev/null -w "%{http_code} %{content_type} %{size_download}\n" "$SERVER/logo?src=https://a.espncdn.com/i/teamlogos/nfl/500/buf.png"

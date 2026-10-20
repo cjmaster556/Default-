@@ -68,6 +68,7 @@ async function route(request, env) {
   if (request.method === "GET" && url.pathname.startsWith("/espn/")) return proxyEspn(url);
   if (request.method === "GET" && /^\/(nhl|nba)\//.test(url.pathname)) return proxyLeague(url);
   if (request.method === "GET" && url.pathname === "/videos") return videos(env, url.searchParams.get("league"));
+  if (request.method === "GET" && url.pathname === "/golf-rankings") return golfRankings(url.searchParams.get("league"));
   if (request.method === "GET" && url.pathname === "/diag") {
     const row = await env.DB.prepare("SELECT v FROM config WHERE k = 'diag'").first();
     return json(row ? JSON.parse(row.v) : []);
@@ -253,6 +254,29 @@ async function logoImage(src) {
     status: res.status,
     headers: { "Content-Type": res.headers.get("content-type") || "image/png", "Cache-Control": "public, max-age=86400" },
   });
+}
+
+// ---------- golf rankings ----------
+
+// The Official World Golf Ranking (men's for the PGA Tour, women's for the LPGA), trimmed to what the app shows.
+async function golfRankings(league) {
+  if (league !== "pga" && league !== "lpga") return json({ error: "Unknown league" }, 404);
+  const res = await fetch(`https://apiweb.owgr.com/api/owgr/rankings/getRankings?pageSize=100&pageNumber=1${league === "lpga" ? "&gender=F" : ""}`, {
+    cf: { cacheTtl: 21600, cacheEverything: true },
+  });
+  if (!res.ok) return json({ error: `Rankings unavailable (${res.status})` }, 502);
+  const data = await res.json();
+  const items = (data.rankingsList || []).map((r) => ({
+    rank: r.rank,
+    lastWeek: r.lastWeekRank,
+    tied: !!r.isTied,
+    name: r.player?.fullName || `${r.player?.firstName || ""} ${r.player?.lastName || ""}`.trim(),
+    country: r.player?.country?.name || "",
+    code: r.player?.country?.code3 || "",
+    avg: r.pointsAverage,
+    events: r.divisorActual,
+  }));
+  return json({ title: league === "lpga" ? "Women's World Golf Ranking" : "Official World Golf Ranking", items }, 200, { "Cache-Control": "public, max-age=3600" });
 }
 
 // ---------- highlight videos ----------

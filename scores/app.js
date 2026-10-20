@@ -3084,8 +3084,7 @@
 
   function tabChoices(tab) {
     const leagues = LEAGUES.map((l) => ({ key: l.key, label: shortName(l) }));
-    // ESPN has no golf standings to show.
-    return tab === "standings" ? leagues.filter((l) => !isGolf(l.key)) : [{ key: "home", label: "★ My Teams" }, ...leagues];
+    return tab === "standings" ? leagues : [{ key: "home", label: "★ My Teams" }, ...leagues];
   }
 
   function tabLeague(tab) {
@@ -3098,7 +3097,7 @@
 
   // Standings come in two layouts; college football has polls instead.
   function tabVariants(tab, league) {
-    if (tab !== "standings") return null;
+    if (tab !== "standings" || isGolf(league)) return null;
     if (league === "cfb") return [{ key: "ap", label: "AP Top 25" }, { key: "coaches", label: "Coaches Poll" }];
     const playoffs = { key: "playoffs", label: "Playoffs" };
     if (league === "wnba") return [{ key: "conference", label: "Standings" }, playoffs];
@@ -3139,6 +3138,7 @@
     if (tab === "standings") {
       const path = byKey[league].path;
       if (league === "cfb") return serverJSON(`/espn/apis/site/v2/sports/${path}/rankings`);
+      if (isGolf(league)) return serverJSON(`/golf-rankings?league=${league}`);
       if (variant === "playoffs") return fetchPlayoffs(league);
       return serverJSON(`/espn/apis/v2/sports/${path}/standings${variant === "division" ? "?level=3" : ""}`);
     }
@@ -3183,6 +3183,8 @@
       html =
         league === "cfb"
           ? rankingsHTML(entry.data, variant)
+          : isGolf(league)
+            ? golfRankingsHTML(entry.data, league)
           : variant === "playoffs"
             ? playoffsHTML(entry.data, league)
             : standingsHTML(entry.data, league, variant);
@@ -3429,6 +3431,39 @@
       .join("");
   }
 
+  // Golf's world ranking: rank, movement since last week, golfer and average points.
+  function golfRankingsHTML(data, league) {
+    const items = data?.items || [];
+    if (!items.length) return '<p class="loading">No rankings available right now.</p>';
+    const followed = new Set([...state.favorites.values()].filter((f) => f.league === league).map((f) => f.name.toLowerCase()));
+    // ESPN's country codes differ from the ranking's in a few places.
+    const flagCode = { KOR: "sko", RSA: "rsa", NIR: "nir", ENG: "eng", SCO: "sco", WAL: "wal" };
+    const rows = items
+      .map((r) => {
+        const moved = r.lastWeek ? r.lastWeek - r.rank : 0;
+        const trend = moved ? `<span class="trend ${moved > 0 ? "up" : "down"}">${moved > 0 ? "▲" : "▼"}${Math.abs(moved)}</span>` : '<span class="trend">–</span>';
+        const flag = r.code ? `https://a.espncdn.com/i/teamlogos/countries/500/${(flagCode[r.code] || r.code).toLowerCase()}.png` : "";
+        return `<tr class="${followed.has(r.name.toLowerCase()) ? "mine" : ""}">
+          <td class="st-rank">${r.tied ? "T" : ""}${esc(r.rank)}</td>
+          <th scope="row"><span class="st-team">${flag ? `<img class="g-flag" src="${esc(flag)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" />` : ""}<span class="st-name">${esc(r.name)}</span></span></th>
+          <td>${trend}</td>
+          <td class="st-pts">${r.avg != null ? Number(r.avg).toFixed(2) : ""}</td>
+        </tr>`;
+      })
+      .join("");
+    return `
+      <section class="st-card">
+        <h3>${esc(data.title || "World Golf Ranking")}</h3>
+        <div class="table-scroll">
+          <table class="st-table">
+            <thead><tr><th></th><th></th><th></th><th>AVG</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </section>
+      <p class="panel-note">Average ranking points per event, from the Official World Golf Ranking.</p>`;
+  }
+
   function rankingsHTML(data, variant) {
     const polls = data.rankings || [];
     const poll = (variant === "coaches" ? polls.find((p) => /coach/i.test(p.name)) : polls.find((p) => /^AP/i.test(p.name))) || polls[0];
@@ -3625,6 +3660,8 @@
 
   function setTab(tab) {
     if (!["scores", "standings", "videos", "news"].includes(tab)) tab = "scores";
+    // Coming from a league's scores, open the new tab on that same league.
+    if (state.tab === "scores" && tab !== "scores" && tabChoices(tab).some((c) => c.key === state.view)) state.tabLeague[tab] = state.view;
     state.tab = tab;
     syncHash();
     window.scrollTo(0, 0);
