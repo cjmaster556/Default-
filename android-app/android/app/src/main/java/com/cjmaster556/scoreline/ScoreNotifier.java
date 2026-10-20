@@ -34,7 +34,7 @@ import org.json.JSONObject;
 
 // Draws Scoreline's own notification from a server message: the scoreboard picture (the same
 // design as the web app's notification picture) shown collapsed and expanded. The live score
-// notification uses the quiet "live" channel and stays put while the game is on; alerts use
+// notification uses the "scoreboard" channel (normal rank so Android can open it expanded at the top, but silent) and stays put while the game is on; alerts use
 // "alerts" and replace it (same tag), and the next live update replaces them again.
 final class ScoreNotifier {
 
@@ -58,7 +58,7 @@ final class ScoreNotifier {
             if (c != null && !c.isEmpty()) card = new JSONObject(c);
         } catch (Exception ignored) {}
 
-        NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, silent ? "live" : "alerts")
+        NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, silent ? "scoreboard" : "alerts")
             .setSmallIcon(R.drawable.ic_stat_scoreline)
             .setColor(0xFF0A84FF)
             .setContentTitle(title)
@@ -66,7 +66,7 @@ final class ScoreNotifier {
             .setAutoCancel(true)
             .setShowWhen(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(silent ? NotificationCompat.PRIORITY_LOW : NotificationCompat.PRIORITY_HIGH)
+            .setPriority(silent ? NotificationCompat.PRIORITY_DEFAULT : NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(tapIntent(ctx, d, tag, messageId));
         if (silent) b.setOnlyAlertOnce(true).setSilent(true);
 
@@ -123,8 +123,9 @@ final class ScoreNotifier {
             c.setDescription("Scores, starts, finals and reminders");
             nm.createNotificationChannel(c);
         }
-        if (nm.getNotificationChannel("live") == null) {
-            NotificationChannel c = new NotificationChannel("live", "Live scores", NotificationManager.IMPORTANCE_LOW);
+        // Not the web app's low-rank "live" channel: Android never opens quiet-group notifications expanded.
+        if (nm.getNotificationChannel("scoreboard") == null) {
+            NotificationChannel c = new NotificationChannel("scoreboard", "Live scoreboard", NotificationManager.IMPORTANCE_DEFAULT);
             c.setDescription("The live score as the game goes on");
             c.setSound(null, null);
             c.enableVibration(false);
