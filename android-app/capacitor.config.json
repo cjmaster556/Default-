@@ -10,7 +10,8 @@
     ]
   },
   "android": {
-    "backgroundColor": "#000000"
+    "backgroundColor": "#000000",
+    "appendUserAgent": "ScorelineNative/2"
   },
   "plugins": {
     "PushNotifications": {

@@ -112,7 +112,8 @@ function checkEndpoint(endpoint) {
 async function subscribe(env, body) {
   // The Android app signs up with a Firebase token instead of a Web Push subscription.
   const fcm = typeof body.fcm === "string" ? body.fcm : "";
-  const sub = fcm ? { endpoint: `fcm:${fcm}`, keys: { p256dh: "fcm", auth: "fcm" } } : body.subscription || {};
+  // Apps that draw their own notifications are marked "fcm2", so they get data-only messages.
+  const sub = fcm ? { endpoint: `fcm:${fcm}`, keys: { p256dh: Number(body.native) >= 2 ? "fcm2" : "fcm", auth: "fcm" } } : body.subscription || {};
   const endpoint = checkEndpoint(sub.endpoint);
   const p256dh = String(sub.keys?.p256dh || "");
   const auth = String(sub.keys?.auth || "");
@@ -379,7 +380,7 @@ async function deliver(env, sub, message, opts) {
   let status;
   try {
     status = sub.endpoint.startsWith("fcm:")
-      ? await sendFcm(env, sub.endpoint.slice(4), message)
+      ? await sendFcm(env, sub.endpoint.slice(4), message, sub.p256dh === "fcm2")
       : await sendPush(sub, message, await vapidKeys(env), SUBJECT, opts);
   } catch {
     return 0;

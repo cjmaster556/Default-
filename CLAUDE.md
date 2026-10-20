@@ -113,6 +113,14 @@ The "middle path" toward an APK (user asked to pace it a little each day): a Cap
   "alerts" (buzz) and "live" (quiet). Tapping an alert routes via `pushNotificationActionPerformed`.
   The Worker sends through FCM HTTP v1 (`src/fcm.js`, service-account JWT signed with WebCrypto) using the `FCM_SERVICE_ACCOUNT`
   Worker secret, which the deploy workflow copies from the GitHub secret of the same name. Status bar icon: `ic_stat_scoreline`.
+- Native scoreboard notifications (APK 2+): `capacitor.config.json` appends `ScorelineNative/2` to the user agent; the web app
+  then subscribes with `native: 2`, stored as p256dh `fcm2`, and the Worker sends those phones data-only FCM messages.
+  `ScorelineMessagingService` (replaces the plugin's receiver via `tools:node="remove"`, then calls super) hands them to
+  `ScoreNotifier`, which draws the web card design on a Canvas (`drawCard` expanded, `drawRow` collapsed; logos cached in
+  cacheDir/logos, dark variant first) into DecoratedCustomViewStyle layouts (`notif_row`/`notif_small`/`notif_big`).
+  Live updates (silent) use channel "live", only alert once, and stay ongoing while `st` is "in" (4-hour timeout).
+  Taps carry `google.message_id` + data extras so the plugin's `pushNotificationActionPerformed` routes them. Golf: plain text.
+  Old APKs (no user-agent mark) keep getting notification messages.
 - Back button: `@capacitor/app`'s `backButton` (`setUpBackButton`) leaves full screen, closes the top sheet (opening order tracked
   with a MutationObserver), returns to Scores, then minimizes (confirmed on the phone). Without it the shell's default back exits the app.
 - Installing: Chrome's direct download of the APK stalled at 100% (its safety scan); long-pressing scoreline.apk on the
@@ -120,7 +128,7 @@ The "middle path" toward an APK (user asked to pace it a little each day): a Cap
   The user has the FCM build installed; alerts work in both the APK and the home-screen web app (confirmed with a test alert).
   GitHub's secret scanning flagged the Firebase API key in google-services.json; that key is meant to ship inside apps, so it's fine.
 - Plan, in order: 1) shell + build (done), 2) FCM push so alerts work in the APK (done, confirmed on the phone), 3) native live score notification
-  (ongoing, custom layout), 4) home screen widget, 5) Watch buttons through native intents.
+  (ongoing, custom layout; built, awaiting phone test), 4) home screen widget, 5) Watch buttons through native intents.
 
 ## Testing
 

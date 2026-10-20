@@ -30,7 +30,8 @@ async function accessToken(account) {
 }
 
 // Send one alert to one phone. Returns an HTTP-like status: 404 means the app is gone.
-export async function sendFcm(env, token, message) {
+// dataOnly: the app (version 2 and up) draws the notification itself, with the scoreboard picture.
+export async function sendFcm(env, token, message, dataOnly = false) {
   const account = JSON.parse(env.FCM_SERVICE_ACCOUNT || "null");
   if (!account?.private_key) return 0;
   const data = {
@@ -45,23 +46,25 @@ export async function sendFcm(env, token, message) {
     method: "POST",
     headers: { Authorization: `Bearer ${await accessToken(account)}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      message: {
-        token,
-        // Shown by Android itself while the app is closed; the same tag replaces the game's earlier alert.
-        notification: { title: data.title, body: data.body },
-        data,
-        android: {
-          priority: message.silent ? "normal" : "high",
-          ttl: message.silent ? "60s" : "600s",
-          notification: {
-            tag: data.tag || undefined,
-            channel_id: message.silent ? "live" : "alerts",
-            notification_priority: message.silent ? "PRIORITY_LOW" : "PRIORITY_HIGH",
-            icon: "ic_stat_scoreline",
-            color: "#0a84ff",
+      message: dataOnly
+        ? { token, data, android: { priority: "high", ttl: message.silent ? "60s" : "600s" } }
+        : {
+            token,
+            // Shown by Android itself while the app is closed; the same tag replaces the game's earlier alert.
+            notification: { title: data.title, body: data.body },
+            data,
+            android: {
+              priority: message.silent ? "normal" : "high",
+              ttl: message.silent ? "60s" : "600s",
+              notification: {
+                tag: data.tag || undefined,
+                channel_id: message.silent ? "live" : "alerts",
+                notification_priority: message.silent ? "PRIORITY_LOW" : "PRIORITY_HIGH",
+                icon: "ic_stat_scoreline",
+                color: "#0a84ff",
+              },
+            },
           },
-        },
-      },
     }),
   });
   if (res.status === 404 || res.status === 400) {

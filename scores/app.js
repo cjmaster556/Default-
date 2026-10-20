@@ -812,7 +812,9 @@
       const teams = [...state.favorites.values()].map((f) => ({ league: f.league, id: f.id }));
       pruneReminders();
       const reminders = [...state.reminders.values()].map((r) => ({ league: r.league, id: r.id, date: r.date }));
-      await postServer("/subscribe", { fcm: token, teams, reminders, settings: { ...alertSettings(), tz: timeZone() } });
+      // "ScorelineNative/2" and up: the app draws its own scoreboard notifications from data-only messages.
+      const native = Number(/ScorelineNative\/(\d+)/.exec(navigator.userAgent)?.[1]) || 1;
+      await postServer("/subscribe", { fcm: token, native, teams, reminders, settings: { ...alertSettings(), tz: timeZone() } });
       state.pushActive = true;
       return { endpoint: `fcm:${token}` };
     }
