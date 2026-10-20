@@ -121,6 +121,7 @@ The "middle path" toward an APK (user asked to pace it a little each day): a Cap
   (`BG`/`notif_bg`) with the team-color glow (the user wanted to keep it), in Google's layout (label on top: "Scoreline", or the alert's title). The app targets SDK 30 on purpose
   (app/build.gradle, lint's ExpiredTargetSdkVersion disabled): apps targeting 31+ get custom notifications wrapped in the
   system header, and the user wanted it to look like Google's score card. Fine for sideloading, not for the Play Store.
+  The status bar icon is the score itself (`statusScore`: away over home, white on clear, `IconCompat.createWithBitmap`).
   Live updates (silent) use channel "live", only alert once, and stay ongoing while `st` is "in" (4-hour timeout).
   Taps carry `google.message_id` + data extras so the plugin's `pushNotificationActionPerformed` routes them. Golf: plain text.
   Old APKs (no user-agent mark) keep getting notification messages.

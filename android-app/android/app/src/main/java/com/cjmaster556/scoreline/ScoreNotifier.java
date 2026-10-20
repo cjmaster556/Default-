@@ -22,6 +22,7 @@ import android.widget.RemoteViews;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.drawable.IconCompat;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -92,6 +93,8 @@ final class ScoreNotifier {
             large.setImageViewBitmap(R.id.card, big);
             // No system header (the app targets Android 11), so these views are the whole notification, like Google's.
             b.setCustomContentView(small).setCustomBigContentView(large).setCustomHeadsUpContentView(small);
+            Bitmap mini = statusScore(a, h);
+            if (mini != null) b.setSmallIcon(IconCompat.createWithBitmap(mini));
             // The live score stays pinned while the game is on (cleared after a few hours just in case).
             if (silent && "in".equals(card.optString("st"))) b.setOngoing(true).setAutoCancel(false).setTimeoutAfter(4 * 3600 * 1000L);
         } else {
@@ -247,6 +250,24 @@ final class ScoreNotifier {
 
     // Dark like Google's card, under the team-color glow; the layouts use the same color around the picture (notif_bg).
     static final int BG = 0xFF1E2129;
+
+    // The status bar icon: the away score over the home score, white on clear (Android uses only the shape).
+    private static Bitmap statusScore(JSONObject a, JSONObject h) {
+        String top = a.optString("score");
+        String bottom = h.optString("score");
+        if (top.isEmpty() || bottom.isEmpty()) return null;
+        int S = 96;
+        Bitmap bmp = Bitmap.createBitmap(S, S, Bitmap.Config.ARGB_8888);
+        Canvas g = new Canvas(bmp);
+        Paint p = paint();
+        p.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
+        p.setColor(Color.WHITE);
+        p.setTextSize(50);
+        centered(g, p, top, S / 2f, S * 0.26f, S);
+        p.setTextSize(50);
+        centered(g, p, bottom, S / 2f, S * 0.76f, S);
+        return bmp;
+    }
 
     private static Bitmap canvas(Canvas g, int w, int h, float radius) {
         Bitmap bmp = Bitmap.createBitmap(Math.round(w * SCALE), Math.round(h * SCALE), Bitmap.Config.ARGB_8888);
