@@ -172,4 +172,18 @@ jobs:
           curl -sS --max-time 30 "https://site.api.espn.com/apis/site/v2/sports/golf/pga/news?limit=3" | jq -c '{n: (.articles | length), first: .articles[0].headline}'
           curl -sS --max-time 30 -o /dev/null -w "standings %{http_code}\n" "https://site.api.espn.com/apis/v2/sports/golf/pga/standings"
           curl -sS --max-time 30 "https://site.api.espn.com/apis/v2/sports/golf/pga/standings" | jq -c '{keys: keys, kids: [.children[]? | {name, n: (.standings.entries | length), e0: (.standings.entries[0] | {athlete: .athlete.displayName, team: .team.displayName, stats: [.stats[]? | {name, displayValue}][0:6]})}], direct: (.standings.entries[0:1] // null)}' 2>/dev/null | cut -c1-1500
+          echo "== golf rankings (where do they live?)"
+          for u in \
+            "https://site.api.espn.com/apis/v2/sports/golf/pga/standings?season=2026" \
+            "https://site.web.api.espn.com/apis/v2/sports/golf/pga/standings" \
+            "https://site.api.espn.com/apis/site/v2/sports/golf/pga/rankings" \
+            "https://site.api.espn.com/apis/site/v2/sports/golf/lpga/rankings" \
+            "https://sports.core.api.espn.com/v2/sports/golf/leagues/pga/seasons/2026/types/2/standings" \
+            "https://sports.core.api.espn.com/v2/sports/golf/leagues/lpga/seasons/2026/types/2/standings" \
+            "https://apiweb.owgr.com/api/owgr/rankings/getRankings?pageSize=5&pageNumber=1" \
+            "https://site.web.api.espn.com/apis/site/v2/sports/golf/pga/athletes/fedex-cup"; do
+            code=$(curl -sS --max-time 20 -o /tmp/r.json -w "%{http_code} %{size_download}" "$u")
+            echo "-- $u -> $code"
+            head -c 700 /tmp/r.json | tr '\n' ' '; echo
+          done
           echo "== logo proxy"; curl -sS -o /dev/null -w "%{http_code} %{content_type} %{size_download}\n" "$SERVER/logo?src=https://a.espncdn.com/i/teamlogos/nfl/500/buf.png"
