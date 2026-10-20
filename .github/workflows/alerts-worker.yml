@@ -87,6 +87,13 @@ jobs:
           get "/espn/apis/site/v2/sports/football/college-football/rankings" | jq -c '{polls: [.rankings[]? | .name], first: (.rankings[0].ranks[0] | {current, previous, points, recordSummary, team: .team.nickname, teamKeys: (.team | keys), keys: keys})}'
           echo "== nfl news"
           get "/espn/apis/site/v2/sports/football/nfl/news?limit=20" | jq -c '{n: (.articles | length), types: [.articles[].type] | unique, first: (.articles[0] | {headline, type, published, img: .images[0].url, web: .links.web.href, keys: keys}), media: ([.articles[] | select(.type == "Media")][0] | if . then {headline, keys: keys, links: .links} else null end)}' | cut -c1-2500
+          echo "== news video clip details (can the phone get the video file?)"
+          clip=$(get "/espn/apis/site/v2/sports/football/nfl/news?limit=30" | jq -r '[.articles[] | select(.type == "Media") | .links.api.self.href][0] // empty')
+          echo "clip api: $clip"
+          if [ -n "$clip" ]; then
+            curl -sS --max-time 20 -D - -o /tmp/clip.json -H "Origin: https://cjmaster556.github.io" "$clip" | grep -iE "^(HTTP|access-control|content-type)" || true
+            jq -c '{keys: keys, v: ((.videos // [])[0] | if . then {headline, duration, keys: keys, source: .links.source, mobile: .links.mobile} else null end)}' /tmp/clip.json | cut -c1-2500
+          fi
           echo "== team news (BUF)"
           get "/espn/apis/site/v2/sports/football/nfl/news?team=2&limit=5" | jq -c '[.articles[]?.headline]'
           for lg in nfl nba mlb nhl wnba cfb; do
