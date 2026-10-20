@@ -123,7 +123,8 @@ The "middle path" toward an APK (user asked to pace it a little each day): a Cap
   system header, and the user wanted it to look like Google's score card. Fine for sideloading, not for the Play Store.
   The status bar icon is the score itself (`statusScore`: away over home, white on clear, `IconCompat.createWithBitmap`).
   Live updates (silent) use channel "scoreboard" (default importance, no sound: low-importance "live" sits in the quiet
-  group, which Android never shows expanded; the user wants it expanded), only alert once, and stay ongoing while `st` is "in" (4-hour timeout).
+  group, which Android never shows expanded; the user wants it expanded, but on their Samsung it still starts collapsed,
+  and two games get grouped under "Scoreline"; the user is fine with it), only alert once, and stay ongoing while `st` is "in" (4-hour timeout).
   Taps carry `google.message_id` + data extras so the plugin's `pushNotificationActionPerformed` routes them. Golf: plain text.
   Old APKs (no user-agent mark) keep getting notification messages.
 - Back button: `@capacitor/app`'s `backButton` (`setUpBackButton`) leaves full screen, closes the top sheet (opening order tracked
