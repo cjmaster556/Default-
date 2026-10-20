@@ -263,10 +263,11 @@ final class ScoreNotifier {
         Paint p = paint();
         p.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
         p.setColor(Color.WHITE);
-        p.setTextSize(50);
-        centered(g, p, top, S / 2f, S * 0.26f, S);
-        p.setTextSize(50);
-        centered(g, p, bottom, S / 2f, S * 0.76f, S);
+        // As big as two lines allow: the digits nearly touch the icon's edges.
+        p.setTextSize(64);
+        centered(g, p, top, S / 2f, S * 0.25f, S);
+        p.setTextSize(64);
+        centered(g, p, bottom, S / 2f, S * 0.77f, S);
         return bmp;
     }
 
