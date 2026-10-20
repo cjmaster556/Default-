@@ -132,6 +132,8 @@ The "middle path" toward an APK (user asked to pace it a little each day): a Cap
   and two games get grouped under "Scoreline"; the user is fine with it), only alert once, and stay ongoing while `st` is "in" (4-hour timeout).
   Taps carry `google.message_id` + data extras so the plugin's `pushNotificationActionPerformed` routes them. Golf: plain text.
   Old APKs (no user-agent mark) keep getting notification messages.
+- Sideways = full screen: `MainActivity.fitBars` hides the status and navigation bars in landscape (swipe shows them briefly),
+  because the landscape video player otherwise kept the status bar in the APK.
 - Back button: `@capacitor/app`'s `backButton` (`setUpBackButton`) leaves full screen, closes the top sheet (opening order tracked
   with a MutationObserver), returns to Scores, then minimizes (confirmed on the phone). Without it the shell's default back exits the app.
 - Home screen widget (`ScoreWidget`, `res/xml/score_widget_info.xml`, `layout/widget_scores.xml`): followed teams' games as
