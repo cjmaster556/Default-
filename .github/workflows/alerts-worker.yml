@@ -55,6 +55,16 @@ jobs:
         if: steps.secrets.outputs.ready == 'true'
         run: $WRANGLER deploy
 
+      # The Android app's alerts go through Firebase; its key lives in the FCM_SERVICE_ACCOUNT repository secret.
+      - name: Pass the Firebase key to the server
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          FCM_SERVICE_ACCOUNT: ${{ secrets.FCM_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FCM_SERVICE_ACCOUNT" ]; then echo "No FCM_SERVICE_ACCOUNT secret yet; Android alerts stay off."; exit 0; fi
+          printf '%s' "$FCM_SERVICE_ACCOUNT" | jq -e '.private_key and .client_email and .project_id' >/dev/null || { echo "::error::FCM_SERVICE_ACCOUNT isn't a complete Firebase service account key."; exit 1; }
+          printf '%s' "$FCM_SERVICE_ACCOUNT" | $WRANGLER secret put FCM_SERVICE_ACCOUNT
+
       # Calls the live server and prints the shape of what ESPN and YouTube send
       # back, so data problems show up in the deploy log.
       - name: Check the live server

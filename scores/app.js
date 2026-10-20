@@ -550,7 +550,10 @@
 
   // ---------- score alerts ----------
 
-  const alertsSupported = () => "Notification" in window && "serviceWorker" in navigator;
+  // Inside the Android app, alerts come through Firebase (the app's own plugin) instead of Web Push.
+  const nativePush = () => (window.Capacitor?.isNativePlatform?.() && window.Capacitor?.Plugins?.PushNotifications) || null;
+  const alertsSupported = () => !!nativePush() || ("Notification" in window && "serviceWorker" in navigator);
+  const notificationsAllowed = () => "Notification" in window && Notification.permission === "granted";
 
   // Keep checking in the background while one of your teams is playing or about to.
   function alertsWatching() {
@@ -654,7 +657,7 @@
 
   function checkAlerts() {
     // When the alerts server is sending alerts, the app doesn't send its own copies.
-    const notifyOK = state.alerts && !state.pushActive && alertsSupported() && Notification.permission === "granted" && !inQuietHours();
+    const notifyOK = state.alerts && !state.pushActive && alertsSupported() && notificationsAllowed() && !inQuietHours();
     const set = alertSettings();
     for (const ev of alertEvents()) {
       if (isGolf(ev._league)) continue;
@@ -718,7 +721,43 @@
   // ---- push alerts from the alerts server (work with the app closed) ----
 
   const ALERTS_SERVER = String(window.SCORELINE_CONFIG?.alertsServer || "").replace(/\/$/, "");
-  const pushSupported = () => !!ALERTS_SERVER && "PushManager" in window && "serviceWorker" in navigator;
+  const pushSupported = () => !!ALERTS_SERVER && (!!nativePush() || ("PushManager" in window && "serviceWorker" in navigator));
+
+  // The Android app's Firebase token, asked for once per launch.
+  let fcmToken = null;
+  function nativeToken() {
+    const push = nativePush();
+    if (fcmToken) return Promise.resolve(fcmToken);
+    return new Promise((resolve, reject) => {
+      const done = [];
+      const finish = (fn, v) => {
+        done.forEach((h) => h?.remove?.());
+        fn(v);
+      };
+      Promise.all([
+        push.addListener("registration", (t) => finish(resolve, (fcmToken = t.value))),
+        push.addListener("registrationError", (e) => finish(reject, new Error(e?.error || "Firebase sign-up failed"))),
+      ]).then((handles) => {
+        done.push(...handles);
+        push.register();
+      });
+      setTimeout(() => finish(reject, new Error("Firebase didn't answer")), 15000);
+    });
+  }
+
+  // Alerts and quiet live-score updates get their own channels, so Android only buzzes for alerts;
+  // tapping one opens its game.
+  function setUpNativePush() {
+    const push = nativePush();
+    if (!push) return;
+    push.createChannel?.({ id: "alerts", name: "Score alerts", description: "Scores, starts, finals and reminders", importance: 4, visibility: 1 }).catch(() => {});
+    push.createChannel?.({ id: "live", name: "Live scores", description: "The live score as the game goes on", importance: 2, sound: null, vibration: false, visibility: 1 }).catch(() => {});
+    push.addListener("pushNotificationActionPerformed", (action) => {
+      const url = action?.notification?.data?.url;
+      const hash = url ? new URL(url, location.href).hash : "";
+      if (hash) location.hash === hash ? window.dispatchEvent(new HashChangeEvent("hashchange")) : (location.hash = hash);
+    });
+  }
 
   const BELL_SVG =
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5.5-6.84V3.5a1.5 1.5 0 0 0-3 0v.66A7 7 0 0 0 5 11v5l-2 2v1h18v-1Z"/></svg>';
@@ -740,7 +779,18 @@
 
   // Sign this phone up with the alerts server and tell it which teams to watch.
   async function syncPush() {
-    if (!pushSupported() || !state.alerts || Notification.permission !== "granted") return false;
+    if (!pushSupported() || !state.alerts) return false;
+    if (nativePush()) {
+      if ((await nativePush().checkPermissions()).receive !== "granted") return false;
+      const token = await nativeToken();
+      const teams = [...state.favorites.values()].map((f) => ({ league: f.league, id: f.id }));
+      pruneReminders();
+      const reminders = [...state.reminders.values()].map((r) => ({ league: r.league, id: r.id, date: r.date }));
+      await postServer("/subscribe", { fcm: token, teams, reminders, settings: { ...alertSettings(), tz: timeZone() } });
+      state.pushActive = true;
+      return { endpoint: `fcm:${token}` };
+    }
+    if (!notificationsAllowed()) return false;
     const reg = await navigator.serviceWorker.ready;
     const res = await fetch(`${ALERTS_SERVER}/vapid`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -764,6 +814,10 @@
   async function stopPush() {
     state.pushActive = false;
     if (!pushSupported()) return;
+    if (nativePush()) {
+      if (fcmToken) await postServer("/unsubscribe", { endpoint: `fcm:${fcmToken}` }).catch(() => {});
+      return;
+    }
     try {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
@@ -794,11 +848,20 @@
       return;
     }
     if (state.alerts) return;
-    let perm = Notification.permission;
-    if (perm === "default") perm = await Notification.requestPermission();
-    if (perm !== "granted") {
-      toast("Notifications are blocked for this site. Allow them in your browser's site settings, then try again.");
-      return;
+    if (nativePush()) {
+      let perm = await nativePush().checkPermissions();
+      if (perm.receive !== "granted") perm = await nativePush().requestPermissions();
+      if (perm.receive !== "granted") {
+        toast("Notifications are off for Scoreline. Turn them on in your phone's Settings → Apps → Scoreline, then try again.");
+        return;
+      }
+    } else {
+      let perm = Notification.permission;
+      if (perm === "default") perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        toast("Notifications are blocked for this site. Allow them in your browser's site settings, then try again.");
+        return;
+      }
     }
     state.alerts = true;
     saveAlerts();
@@ -4395,5 +4458,6 @@
   refresh();
   if (state.tab !== "scores") loadTab();
   // Keep the server's copy of your teams current, and renew the sign-up if the browser dropped it.
+  setUpNativePush();
   if (state.alerts) syncPush().catch(() => {});
 })();

@@ -107,12 +107,16 @@ The "middle path" toward an APK (user asked to pace it a little each day): a Cap
   `android-latest` GitHub release (always the same download link). `versionCode` = the run number, so each build updates.
 - Signed with `android/app/scoreline.keystore` (password `scoreline`), committed on purpose so updates install over each
   other; fine for a personal sideloaded app, replace it for any Play Store release.
-- Web Push doesn't work inside an Android WebView: alerts need Firebase Cloud Messaging (a later step, needs the user's
-  free Firebase project). Until then the user keeps the home-screen web app for alerts.
+- Alerts in the APK use Firebase Cloud Messaging (Web Push doesn't work in a WebView). Firebase project `scoreline-b9db8`;
+  `android/app/google-services.json` (not secret) is committed. `@capacitor/push-notifications` registers; the web app detects
+  the native shell (`nativePush()`), signs up with `{ fcm: token }` (stored as endpoint `fcm:<token>`), and creates channels
+  "alerts" (buzz) and "live" (quiet). Tapping an alert routes via `pushNotificationActionPerformed`.
+  The Worker sends through FCM HTTP v1 (`src/fcm.js`, service-account JWT signed with WebCrypto) using the `FCM_SERVICE_ACCOUNT`
+  Worker secret, which the deploy workflow copies from the GitHub secret of the same name. Status bar icon: `ic_stat_scoreline`.
 - Installing: Chrome's direct download of the APK stalled at 100% (its safety scan); long-pressing scoreline.apk on the
   release page (github.com/cjmaster556/Default-/releases/tag/android-latest) and choosing "Download link" worked.
   The user has build 1.0.1 installed and it runs. The bell is hidden in the APK (no Web Push in WebView), as expected.
-- Plan, in order: 1) shell + build (done), 2) FCM push so alerts work in the APK, 3) native live score notification
+- Plan, in order: 1) shell + build (done), 2) FCM push so alerts work in the APK (built; needs the user's secret + new APK), 3) native live score notification
   (ongoing, custom layout), 4) home screen widget, 5) Watch buttons through native intents.
 
 ## Testing

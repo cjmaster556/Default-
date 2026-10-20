@@ -6,6 +6,7 @@
 // for the app, which browsers can't always load from ESPN and YouTube directly.
 
 import { generateVapidKeys, sendPush } from "./push.js";
+import { sendFcm } from "./fcm.js";
 
 const LEAGUES = {
   nfl: { path: "football/nfl" },
@@ -102,17 +103,20 @@ async function forget(env, endpoint) {
 }
 
 function checkEndpoint(endpoint) {
+  if (/^fcm:[\w:-]{20,400}$/.test(String(endpoint || ""))) return String(endpoint);
   const u = new URL(String(endpoint || ""));
   if (u.protocol !== "https:" && !(u.protocol === "http:" && u.hostname === "localhost")) throw new Error("Push endpoint must be https");
   return u.href;
 }
 
 async function subscribe(env, body) {
-  const sub = body.subscription || {};
+  // The Android app signs up with a Firebase token instead of a Web Push subscription.
+  const fcm = typeof body.fcm === "string" ? body.fcm : "";
+  const sub = fcm ? { endpoint: `fcm:${fcm}`, keys: { p256dh: "fcm", auth: "fcm" } } : body.subscription || {};
   const endpoint = checkEndpoint(sub.endpoint);
   const p256dh = String(sub.keys?.p256dh || "");
   const auth = String(sub.keys?.auth || "");
-  if (!/^[\w-]{80,100}$/.test(p256dh) || !/^[\w-]{16,32}$/.test(auth)) throw new Error("Subscription keys are missing");
+  if (!fcm && (!/^[\w-]{80,100}$/.test(p256dh) || !/^[\w-]{16,32}$/.test(auth))) throw new Error("Subscription keys are missing");
   const teams = (Array.isArray(body.teams) ? body.teams : [])
     .slice(0, 200)
     .filter((t) => LEAGUES[t?.league] && /^\w+$/.test(String(t.id)))
@@ -374,7 +378,9 @@ async function vapidKeys(env) {
 async function deliver(env, sub, message, opts) {
   let status;
   try {
-    status = await sendPush(sub, message, await vapidKeys(env), SUBJECT, opts);
+    status = sub.endpoint.startsWith("fcm:")
+      ? await sendFcm(env, sub.endpoint.slice(4), message)
+      : await sendPush(sub, message, await vapidKeys(env), SUBJECT, opts);
   } catch {
     return 0;
   }

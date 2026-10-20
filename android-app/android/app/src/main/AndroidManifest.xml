@@ -8,6 +8,11 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
+        <!-- Alerts from Firebase use the white Scoreline mark in the status bar, on the "alerts" channel by default. -->
+        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_scoreline" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/scoreline_blue" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="alerts" />
+
 
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
@@ -38,4 +43,5 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>
