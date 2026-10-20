@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="scoreline_blue">#0A84FF</color>
+    <!-- Behind the scoreboard notification; same as ScoreNotifier.BG. -->
+    <color name="notif_bg">#FF1E2129</color>
 </resources>

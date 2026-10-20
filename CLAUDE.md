@@ -117,7 +117,10 @@ The "middle path" toward an APK (user asked to pace it a little each day): a Cap
   then subscribes with `native: 2`, stored as p256dh `fcm2`, and the Worker sends those phones data-only FCM messages.
   `ScorelineMessagingService` (replaces the plugin's receiver via `tools:node="remove"`, then calls super) hands them to
   `ScoreNotifier`, which draws the web card design on a Canvas (`drawCard` expanded, `drawRow` collapsed; logos cached in
-  cacheDir/logos, dark variant first) into DecoratedCustomViewStyle layouts (`notif_row`/`notif_small`/`notif_big`).
+  cacheDir/logos, dark variant first) into full-bleed layouts (`notif_row`/`notif_small`/`notif_big`) on a plain dark card
+  (`BG`/`notif_bg`), in Google's layout (label on top: "Scoreline", or the alert's title). The app targets SDK 30 on purpose
+  (app/build.gradle, lint's ExpiredTargetSdkVersion disabled): apps targeting 31+ get custom notifications wrapped in the
+  system header, and the user wanted it to look like Google's score card. Fine for sideloading, not for the Play Store.
   Live updates (silent) use channel "live", only alert once, and stay ongoing while `st` is "in" (4-hour timeout).
   Taps carry `google.message_id` + data extras so the plugin's `pushNotificationActionPerformed` routes them. Golf: plain text.
   Old APKs (no user-agent mark) keep getting notification messages.

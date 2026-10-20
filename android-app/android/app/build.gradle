@@ -6,7 +6,10 @@ android {
     defaultConfig {
         applicationId "com.cjmaster556.scoreline"
         minSdkVersion rootProject.ext.minSdkVersion
-        targetSdkVersion rootProject.ext.targetSdkVersion
+        // Android 11's rules: apps built for Android 12+ must wrap custom notifications in the system header
+        // (icon, name, time). At 30 the scoreboard can fill the whole notification, like Google's.
+        // Fine for this sideloaded app; the Play Store would require the current level.
+        targetSdkVersion 30
         // Each GitHub build gets a higher number so phones accept it as an update.
         versionCode((System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger())
         versionName "1.0.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
@@ -19,6 +22,9 @@ android {
     }
     // One fixed key, kept in the repo, so each new APK installs over the last one.
     // It only signs this personal, sideloaded app; a Play Store release would use a private key instead.
+    lint {
+        disable 'ExpiredTargetSdkVersion', 'OldTargetApi'
+    }
     signingConfigs {
         scoreline {
             storeFile file('scoreline.keystore')

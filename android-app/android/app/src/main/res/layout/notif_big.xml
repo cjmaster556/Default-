@@ -1,29 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Expanded: the alert's text, then the full scoreboard card. -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Expanded: the whole scoreboard card, edge to edge. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical">
-    <TextView
-        android:id="@+id/title"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:ellipsize="end"
-        android:singleLine="true"
-        android:textAppearance="@style/TextAppearance.Compat.Notification.Title" />
-    <TextView
-        android:id="@+id/body"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:ellipsize="end"
-        android:maxLines="2"
-        android:textAppearance="@style/TextAppearance.Compat.Notification" />
+    android:background="@color/notif_bg">
     <ImageView
         android:id="@+id/card"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
         android:adjustViewBounds="true"
-        android:maxHeight="170dp"
+        android:maxHeight="250dp"
         android:scaleType="fitCenter" />
-</LinearLayout>
+</FrameLayout>

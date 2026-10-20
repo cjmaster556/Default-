@@ -12,10 +12,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.Path;
-import android.graphics.RadialGradient;
 import android.graphics.RectF;
-import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.widget.RemoteViews;
@@ -77,7 +74,7 @@ final class ScoreNotifier {
             try {
                 Bitmap la = logo(ctx, a.optString("logo"));
                 Bitmap lh = logo(ctx, h.optString("logo"));
-                big = drawCard(card, a, h, la, lh);
+                big = drawCard(card, a, h, la, lh, silent ? "Scoreline" : title, !silent);
                 row = drawRow(card, a, h, la, lh);
             } catch (Exception | OutOfMemoryError e) {
                 big = null;
@@ -90,9 +87,8 @@ final class ScoreNotifier {
             if (!silent) small.setTextViewText(R.id.title, title);
             RemoteViews large = new RemoteViews(ctx.getPackageName(), R.layout.notif_big);
             large.setImageViewBitmap(R.id.card, big);
-            large.setTextViewText(R.id.title, title);
-            large.setTextViewText(R.id.body, body);
-            b.setStyle(new NotificationCompat.DecoratedCustomViewStyle()).setCustomContentView(small).setCustomBigContentView(large);
+            // No system header (the app targets Android 11), so these views are the whole notification, like Google's.
+            b.setCustomContentView(small).setCustomBigContentView(large).setCustomHeadsUpContentView(small);
             // The live score stays pinned while the game is on (cleared after a few hours just in case).
             if (silent && "in".equals(card.optString("st"))) b.setOngoing(true).setAutoCancel(false).setTimeoutAfter(4 * 3600 * 1000L);
         } else {
@@ -189,16 +185,20 @@ final class ScoreNotifier {
     private static final Typeface BOLD = Typeface.create("sans-serif", Typeface.BOLD);
     private static final Typeface MEDIUM = Typeface.create("sans-serif-medium", Typeface.NORMAL);
 
-    // The full card: logos in tiles, big scores, the clock in a pill, league, and the bottom line.
-    private static Bitmap drawCard(JSONObject c, JSONObject a, JSONObject h, Bitmap la, Bitmap lh) {
+    // The full card, in Google's layout: a small label on top (the app's name, or what happened for an
+    // alert), logos in gray tiles, big scores, the clock in a pill, the league, and the bottom line.
+    private static Bitmap drawCard(JSONObject c, JSONObject a, JSONObject h, Bitmap la, Bitmap lh, String label, boolean strong) {
         int W = 1000;
-        int H = 500;
         String st = c.optString("st");
         String line = c.optString("line");
         Canvas g = new Canvas();
-        Bitmap bmp = canvas(g, W, line.isEmpty() ? 340 : H, 40);
-        glow(g, a, h, W, H * 0.35f, W * 0.55f);
+        Bitmap bmp = canvas(g, W, (line.isEmpty() ? 330 : 480) + 70);
         Paint p = paint();
+        p.setTypeface(strong ? BOLD : MEDIUM);
+        p.setTextSize(strong ? 40 : 34);
+        p.setColor(strong ? Color.WHITE : 0xFFC4C7CE);
+        centered(g, p, label, W / 2f, 48, W - 80);
+        g.translate(0, 70);
         int tile = 170;
         side(g, p, st, a, la, 40, 60, tile, 300, 150, 128, 290, 46);
         side(g, p, st, h, lh, W - 40 - tile, 60, tile, W - 300, 150, 128, 290, 46);
@@ -224,8 +224,7 @@ final class ScoreNotifier {
         int H = 140;
         String st = c.optString("st");
         Canvas g = new Canvas();
-        Bitmap bmp = canvas(g, W, H, 28);
-        glow(g, a, h, W, H / 2f, W * 0.45f);
+        Bitmap bmp = canvas(g, W, H);
         Paint p = paint();
         int tile = 104;
         side(g, p, st, a, la, 18, 18, tile, 320, 70, 84, 0, 0);
@@ -237,34 +236,22 @@ final class ScoreNotifier {
         return bmp;
     }
 
-    private static Bitmap canvas(Canvas g, int w, int h, float radius) {
+    // Plain dark, like Google's card; the layouts use the same color around the picture (notif_bg).
+    static final int BG = 0xFF1E2129;
+
+    private static Bitmap canvas(Canvas g, int w, int h) {
         Bitmap bmp = Bitmap.createBitmap(Math.round(w * SCALE), Math.round(h * SCALE), Bitmap.Config.ARGB_8888);
         g.setBitmap(bmp);
         g.scale(SCALE, SCALE);
-        Path clip = new Path();
-        clip.addRoundRect(new RectF(0, 0, w, h), radius, radius, Path.Direction.CW);
-        g.clipPath(clip);
-        g.drawColor(0xFF1F1F22);
+        g.drawColor(BG);
         return bmp;
-    }
-
-    // Each team's color glowing in from its side.
-    private static void glow(Canvas g, JSONObject a, JSONObject h, int w, float cy, float r) {
-        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        float[] xs = { 0, w };
-        JSONObject[] teams = { a, h };
-        for (int i = 0; i < 2; i++) {
-            int col = teamColor(teams[i]);
-            p.setShader(new RadialGradient(xs[i], cy, r, (col & 0xFFFFFF) | 0xCC000000, col & 0xFFFFFF, Shader.TileMode.CLAMP));
-            g.drawPaint(p);
-        }
     }
 
     private static void side(Canvas g, Paint p, String st, JSONObject t, Bitmap logo, float x, float y, int tile, float sx, float sy, float scoreSize, float ay, float abbrSize) {
         int alpha = "post".equals(st) && !t.optBoolean("won") ? 140 : 255;
         p.setAlpha(255);
-        p.setColor(0x24FFFFFF);
-        p.setAlpha(Math.round(0x24 * alpha / 255f));
+        p.setColor(0x4DFFFFFF);
+        p.setAlpha(Math.round(0x4D * alpha / 255f));
         g.drawRoundRect(new RectF(x, y, x + tile, y + tile), tile * 0.16f, tile * 0.16f, p);
         float pad = tile * 0.12f;
         if (logo != null) {
