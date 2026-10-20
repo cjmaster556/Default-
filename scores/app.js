@@ -3447,7 +3447,7 @@
           <td class="st-rank">${r.tied ? "T" : ""}${esc(r.rank)}</td>
           <th scope="row"><span class="st-team">${flag ? `<img class="g-flag" src="${esc(flag)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" />` : ""}<span class="st-name">${esc(r.name)}</span></span></th>
           <td>${trend}</td>
-          <td class="st-pts">${r.value != null ? esc(r.value) : r.avg != null ? Number(r.avg).toFixed(2) : ""}</td>
+          <td class="st-pts">${r.value != null ? esc(String(r.value).replace(/\d{4,}/, (d) => Number(d).toLocaleString("en-US"))) : r.avg != null ? Number(r.avg).toFixed(2) : ""}</td>
         </tr>`;
       })
       .join("");
@@ -3461,7 +3461,7 @@
           </table>
         </div>
       </section>
-      <p class="panel-note">${league === "lpga" ? "Season points, from ESPN." : "Average ranking points per event, from the Official World Golf Ranking."}</p>`;
+      <p class="panel-note">${league === "lpga" ? "This season, from ESPN. Updated daily." : "Average ranking points per event, from the Official World Golf Ranking."}</p>`;
   }
 
   function rankingsHTML(data, variant) {
