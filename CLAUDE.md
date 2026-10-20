@@ -114,7 +114,7 @@ The "middle path" toward an APK (user asked to pace it a little each day): a Cap
   The Worker sends through FCM HTTP v1 (`src/fcm.js`, service-account JWT signed with WebCrypto) using the `FCM_SERVICE_ACCOUNT`
   Worker secret, which the deploy workflow copies from the GitHub secret of the same name. Status bar icon: `ic_stat_scoreline`.
 - Back button: `@capacitor/app`'s `backButton` (`setUpBackButton`) leaves full screen, closes the top sheet (opening order tracked
-  with a MutationObserver), returns to Scores, then minimizes. Without it the shell's default back exits the app.
+  with a MutationObserver), returns to Scores, then minimizes (confirmed on the phone). Without it the shell's default back exits the app.
 - Installing: Chrome's direct download of the APK stalled at 100% (its safety scan); long-pressing scoreline.apk on the
   release page (github.com/cjmaster556/Default-/releases/tag/android-latest) and choosing "Download link" worked.
   The user has the FCM build installed; alerts work in both the APK and the home-screen web app (confirmed with a test alert).
