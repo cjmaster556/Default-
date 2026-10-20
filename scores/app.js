@@ -759,6 +759,32 @@
     });
   }
 
+  // Android's back button in the APK: leave full screen, close the top sheet, go back to Scores, then leave the app.
+  // (Without this, the shell's default back closes the app, since sheets and tabs don't add history.)
+  const openOrder = [];
+  function setUpBackButton() {
+    const app = window.Capacitor?.isNativePlatform?.() && window.Capacitor?.Plugins?.App;
+    if (!app) return;
+    const watch = new MutationObserver((changes) => {
+      for (const { target: d } of changes) {
+        const i = openOrder.indexOf(d);
+        if (i >= 0) openOrder.splice(i, 1);
+        if (d.open) openOrder.push(d);
+      }
+    });
+    for (const d of document.querySelectorAll("dialog")) {
+      watch.observe(d, { attributes: true, attributeFilter: ["open"] });
+      if (d.open) openOrder.push(d);
+    }
+    app.addListener("backButton", () => {
+      if (document.fullscreenElement) return void document.exitFullscreen().catch(() => {});
+      const top = openOrder.filter((d) => d.open).pop();
+      if (top) return void top.close();
+      if (state.tab !== "scores") return setTab("scores");
+      app.minimizeApp();
+    });
+  }
+
   const BELL_SVG =
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5.5-6.84V3.5a1.5 1.5 0 0 0-3 0v.66A7 7 0 0 0 5 11v5l-2 2v1h18v-1Z"/></svg>';
 
@@ -4459,5 +4485,6 @@
   if (state.tab !== "scores") loadTab();
   // Keep the server's copy of your teams current, and renew the sign-up if the browser dropped it.
   setUpNativePush();
+  setUpBackButton();
   if (state.alerts) syncPush().catch(() => {});
 })();
