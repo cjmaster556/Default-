@@ -101,6 +101,8 @@ final class ScoreNotifier {
             b.setStyle(new NotificationCompat.BigTextStyle().bigText(body));
         }
         NotificationManagerCompat.from(ctx).notify(tag, ID, b.build());
+        // A score changed, so the home screen widget catches up now instead of at its next half-hourly refresh.
+        if (card != null) ScoreWidget.refresh(ctx);
     }
 
     // Tapping opens the app; the push plugin hands the data (with the game's link) to the web app.
@@ -136,7 +138,7 @@ final class ScoreNotifier {
     // ---------- logos ----------
 
     // ESPN's dark-background logo first (the card is dark), then the regular one. Kept on disk.
-    private static Bitmap logo(Context ctx, String src) {
+    static Bitmap logo(Context ctx, String src) {
         if (src == null || !src.startsWith("https://")) return null;
         String dark = src.replace("/500/", "/500-dark/");
         Bitmap b = fetch(ctx, dark);
@@ -230,7 +232,7 @@ final class ScoreNotifier {
     // One row for the collapsed notification: logo, abbreviation and score on each side, clock between.
     // Drawn a little taller than the row (shown center-cropped) so the glow reaches the notification's edges;
     // rounded when it sits under an alert's text instead.
-    private static Bitmap drawRow(JSONObject c, JSONObject a, JSONObject h, Bitmap la, Bitmap lh, float radius) {
+    static Bitmap drawRow(JSONObject c, JSONObject a, JSONObject h, Bitmap la, Bitmap lh, float radius) {
         int W = 1000;
         int H = radius > 0 ? 140 : 180;
         String st = c.optString("st");

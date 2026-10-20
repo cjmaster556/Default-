@@ -134,12 +134,19 @@ The "middle path" toward an APK (user asked to pace it a little each day): a Cap
   Old APKs (no user-agent mark) keep getting notification messages.
 - Back button: `@capacitor/app`'s `backButton` (`setUpBackButton`) leaves full screen, closes the top sheet (opening order tracked
   with a MutationObserver), returns to Scores, then minimizes (confirmed on the phone). Without it the shell's default back exits the app.
+- Home screen widget (`ScoreWidget`, `res/xml/score_widget_info.xml`, `layout/widget_scores.xml`): followed teams' games as
+  `ScoreNotifier.drawRow` rows (rounded), live → upcoming (local start time) → finals, up to 5 as the height allows. It fetches
+  ESPN scoreboards natively per followed league (golf skipped) and builds the same card fields as the server. Follows come
+  from the web app via a small custom plugin (`WidgetPlugin` "ScorelineWidget".setTeams, registered in `MainActivity`;
+  JS `syncWidget` at start and in `saveFavorites`) into SharedPreferences `scoreline.widget`. Refreshes: Android's 30-minute
+  minimum, setTeams, and every game push (`ScoreNotifier` calls `ScoreWidget.refresh`). Row taps open the game (intent extras
+  `google.message_id` + `url`, routed like alert taps).
 - Installing: Chrome's direct download of the APK stalled at 100% (its safety scan); long-pressing scoreline.apk on the
   release page (github.com/cjmaster556/Default-/releases/tag/android-latest) and choosing "Download link" worked.
   The user has the FCM build installed; alerts work in both the APK and the home-screen web app (confirmed with a test alert).
   GitHub's secret scanning flagged the Firebase API key in google-services.json; that key is meant to ship inside apps, so it's fine.
 - Plan, in order: 1) shell + build (done), 2) FCM push so alerts work in the APK (done, confirmed on the phone), 3) native live score notification
-  (ongoing, custom layout; done, the collapsed live row confirmed on the phone during WSH–SF), 4) home screen widget, 5) Watch buttons through native intents.
+  (ongoing, custom layout; done, the collapsed live row confirmed on the phone during WSH–SF), 4) home screen widget (built, awaiting phone test), 5) Watch buttons through native intents.
 
 ## Testing
 

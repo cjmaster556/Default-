@@ -38,6 +38,14 @@
         </service>
         <service android:name="com.capacitorjs.plugins.pushnotifications.MessagingService" tools:node="remove" />
 
+        <!-- Home screen widget with the followed teams' games (ScoreWidget). -->
+        <receiver android:name=".ScoreWidget" android:exported="false" android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/score_widget_info" />
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

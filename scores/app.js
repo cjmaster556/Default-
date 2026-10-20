@@ -102,6 +102,12 @@
     } catch {
       /* storage unavailable; follows last for this visit only */
     }
+    syncWidget();
+  }
+
+  // The Android app's home screen widget shows the followed teams' games; it needs their "league:id" keys.
+  function syncWidget() {
+    window.Capacitor?.Plugins?.ScorelineWidget?.setTeams({ teams: [...state.favorites.keys()] }).catch(() => {});
   }
 
   function loadJSON(key, fallback) {
@@ -4518,6 +4524,7 @@
   if (state.tab !== "scores") loadTab();
   // Keep the server's copy of your teams current, and renew the sign-up if the browser dropped it.
   setUpNativePush();
+  syncWidget();
   setUpBackButton();
   if (state.alerts) syncPush().catch(() => {});
 })();
