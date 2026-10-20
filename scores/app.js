@@ -4455,17 +4455,6 @@
     else location.hash = hash;
   });
 
-  // In the Android app, YouTube videos that can't play in Scoreline (the NFL blocks embedding) open in an
-  // in-app browser panel over the app instead of switching to the YouTube app. Runs after the other click
-  // handlers, so videos they already played here are left alone.
-  document.addEventListener("click", (e) => {
-    const browser = window.Capacitor?.isNativePlatform?.() && window.Capacitor?.Plugins?.Browser;
-    const a = browser && !e.defaultPrevented && e.target.closest("a[href]");
-    if (!a || !/^https:\/\/(www\.|m\.)?(youtube\.com\/(watch|shorts)|youtu\.be\/)/.test(a.href)) return;
-    e.preventDefault();
-    browser.open({ url: a.href, toolbarColor: "#000000", presentationStyle: "popover" }).catch(() => window.open(a.href, "_blank"));
-  });
-
   // News tab videos play in the app's player (see playNewsClip).
   document.addEventListener("click", (e) => {
     const story = e.target.closest("[data-news-clip]");
