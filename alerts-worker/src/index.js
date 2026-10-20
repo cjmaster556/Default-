@@ -289,7 +289,9 @@ async function lpgaRace(env) {
     if (Date.now() - data.at < 6 * 3600000) return json(data, 200, { "Cache-Control": "public, max-age=3600" });
   }
   const year = new Date().getUTCFullYear();
-  const res = await fetch(`https://sports.core.api.espn.com/v2/sports/golf/leagues/lpga/seasons/${year}/types/2/standings/0`);
+  // ESPN's core service turns away requests that don't look like a browser's.
+  const headers = { "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36", Accept: "application/json" };
+  const res = await fetch(`https://sports.core.api.espn.com/v2/sports/golf/leagues/lpga/seasons/${year}/types/2/standings/0`, { headers });
   if (!res.ok) return json({ error: `Standings unavailable (${res.status})` }, 502);
   const stat = (e, name) => Number(e.records?.[0]?.stats?.find((x) => x.name === name)?.value ?? e.records?.[0]?.stats?.find((x) => x.name === name)?.displayValue?.replace(/[$,]/g, "")) || 0;
   const entries = ((await res.json()).standings || [])
@@ -300,7 +302,7 @@ async function lpgaRace(env) {
   const byPoints = entries.some((e) => e.points > 0);
   const people = await Promise.all(
     entries.map((e) =>
-      fetch(e.ref.replace(/^http:/, "https:"))
+      fetch(e.ref.replace(/^http:/, "https:"), { headers })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null)
     )
