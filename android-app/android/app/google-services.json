@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "290895752595",
+    "project_id": "scoreline-b9db8",
+    "storage_bucket": "scoreline-b9db8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:290895752595:android:a356708ef75364a1df4c66",
+        "android_client_info": {
+          "package_name": "com.cjmaster556.scoreline"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDiouAZVsPCqCy141RjSty2GuRh-a2fG9k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
