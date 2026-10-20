@@ -105,6 +105,9 @@ The "middle path" toward an APK (user asked to pace it a little each day): a Cap
   other; fine for a personal sideloaded app, replace it for any Play Store release.
 - Web Push doesn't work inside an Android WebView: alerts need Firebase Cloud Messaging (a later step, needs the user's
   free Firebase project). Until then the user keeps the home-screen web app for alerts.
+- Installing: Chrome's direct download of the APK stalled at 100% (its safety scan); long-pressing scoreline.apk on the
+  release page (github.com/cjmaster556/Default-/releases/tag/android-latest) and choosing "Download link" worked.
+  The user has build 1.0.1 installed and it runs. The bell is hidden in the APK (no Web Push in WebView), as expected.
 - Plan, in order: 1) shell + build (done), 2) FCM push so alerts work in the APK, 3) native live score notification
   (ongoing, custom layout), 4) home screen widget, 5) Watch buttons through native intents.
 
