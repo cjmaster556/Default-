@@ -4,6 +4,6 @@
     <string name="title_activity_main">Scoreline</string>
     <string name="package_name">com.cjmaster556.scoreline</string>
     <string name="custom_url_scheme">com.cjmaster556.scoreline</string>
-    <string name="widget_description">Your teams' games: live scores, start times and finals</string>
-    <string name="widget_loading">Loading your teams' games…</string>
+    <string name="widget_description">Live scores, start times and finals</string>
+    <string name="widget_loading">Loading your games…</string>
 </resources>
