@@ -135,7 +135,8 @@ The "middle path" toward an APK (user asked to pace it a little each day): a Cap
 - Back button: `@capacitor/app`'s `backButton` (`setUpBackButton`) leaves full screen, closes the top sheet (opening order tracked
   with a MutationObserver), returns to Scores, then minimizes (confirmed on the phone). Without it the shell's default back exits the app.
 - Home screen widget (`ScoreWidget`, `res/xml/score_widget_info.xml`, `layout/widget_scores.xml`): followed teams' games as
-  `ScoreNotifier.drawRow` rows (rounded), live → upcoming (local start time) → finals, up to 5 as the height allows. It fetches
+  `ScoreNotifier.drawRow` rows (rounded), live → upcoming (local start time) → finals, up to 5; when they only fit smaller, `widget_scores_fill` shares the height
+  and rows shrink (to ~70%) rather than dropping a game (the user saw one cut off after resizing). It fetches
   ESPN scoreboards natively per followed league (golf skipped) and builds the same card fields as the server. Follows come
   from the web app via a small custom plugin (`WidgetPlugin` "ScorelineWidget".setTeams, registered in `MainActivity`;
   JS `syncWidget` at start and in `saveFavorites`) into SharedPreferences `scoreline.widget`. Refreshes: Android's 30-minute

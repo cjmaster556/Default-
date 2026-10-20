@@ -87,10 +87,16 @@ public class ScoreWidget extends AppWidgetProvider {
             Bundle opts = manager.getAppWidgetOptions(id);
             int w = Math.max(200, opts.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250));
             int h = Math.max(80, opts.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 110));
-            // Each row is 1000 x 140 on the drawing grid, so it shows w * 0.14 tall, plus a small gap.
-            int fit = Math.max(1, Math.min(ROWS.length, (int) ((h - 30) / (w * 0.14f + 6))));
+            // Each row is 1000 x 140 on the drawing grid: inside the 10dp padding it shows (w - 20) * 0.14 tall, plus a 6dp
+            // gap, under a header of about 37dp. When the games don't all fit at full size, the "fill" layout shares the
+            // height between them and the rows shrink (down to about 70%) instead of a game being dropped.
+            float rowH = (w - 20) * 0.14f;
+            int full = (int) ((h - 37) / (rowH + 6));
+            int squeezed = (int) ((h - 37) / (rowH * 0.7f + 4));
+            int fit = Math.max(1, Math.min(ROWS.length, Math.min(games.size(), squeezed)));
+            int layout = fit > full ? R.layout.widget_scores_fill : R.layout.widget_scores;
 
-            RemoteViews views = new RemoteViews(ctx.getPackageName(), R.layout.widget_scores);
+            RemoteViews views = new RemoteViews(ctx.getPackageName(), layout);
             views.setOnClickPendingIntent(R.id.widget_root, openApp(ctx, null, 0));
             views.setViewVisibility(R.id.empty, empty != null ? View.VISIBLE : View.GONE);
             if (empty != null) views.setTextViewText(R.id.empty, empty);
