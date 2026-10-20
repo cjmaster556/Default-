@@ -30,6 +30,8 @@ Plain HTML/CSS/JS, no build step. `app.js` is one IIFE (about 3,000 lines), orga
   before this they opened espn.com, which the APK handed to the ESPN app. Confirmed playing on the phone.
   League YouTube videos come from the Worker. The NFL blocks YouTube embedding, so `noEmbed.nfl` makes NFL videos open in YouTube.
   Other leagues play through the YouTube IFrame API; error 101/150 marks that league as no-embed.
+  In the APK, YouTube links not played in-app open in `@capacitor/browser` (a Custom Tab over the app) via a document
+  click listener that skips clicks already handled (`defaultPrevented`), instead of jumping to the YouTube app.
 - **Rotation**: the manifest allows any orientation (it was locked to portrait, which blocked sideways video). Turning the phone
   sideways with a video open makes the player fill the screen (CSS, landscape media query); a player's own full-screen button also
   locks landscape (`fullscreenchange` + `screen.orientation.lock`). An installed app picks up manifest changes only when Chrome
