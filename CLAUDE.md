@@ -122,6 +122,8 @@ The "middle path" toward an APK (user asked to pace it a little each day): a Cap
   (app/build.gradle, lint's ExpiredTargetSdkVersion disabled): apps targeting 31+ get custom notifications wrapped in the
   system header, and the user wanted it to look like Google's score card. Fine for sideloading, not for the Play Store.
   The status bar icon is the score itself (`statusScore`: away over home, white on clear, `IconCompat.createWithBitmap`).
+  The user asked for a status bar pill like YouTube TV's: that's Android 16 Live Updates (promoted ongoing), which refuses
+  custom views, so it would mean dropping the card or a second notification per game. Not done; bigger digits instead.
   Live updates (silent) use channel "scoreboard" (default importance, no sound: low-importance "live" sits in the quiet
   group, which Android never shows expanded; the user wants it expanded, but on their Samsung it still starts collapsed,
   and two games get grouped under "Scoreline"; the user is fine with it), only alert once, and stay ongoing while `st` is "in" (4-hour timeout).
