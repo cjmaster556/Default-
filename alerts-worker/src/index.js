@@ -280,43 +280,12 @@ async function golfRankings(league, env) {
   return json({ title: league === "lpga" ? "Women's World Golf Ranking" : "Official World Golf Ranking", items }, 200, { "Cache-Control": "public, max-age=3600" });
 }
 
-// The LPGA's season points race from ESPN. Its list holds every golfer's points but only a link to each name,
-// so look up the top 40 names and keep the result for six hours.
+// The LPGA's season points race. ESPN's detailed standings service turns away this server, so a daily
+// GitHub workflow (golf-standings.yml) builds the list and saves it here.
 async function lpgaRace(env) {
   const saved = await env.DB.prepare("SELECT v FROM config WHERE k = 'lpga-race'").first();
-  if (saved) {
-    const data = JSON.parse(saved.v);
-    if (Date.now() - data.at < 6 * 3600000) return json(data, 200, { "Cache-Control": "public, max-age=3600" });
-  }
-  const year = new Date().getUTCFullYear();
-  // ESPN's core service turns away requests that don't look like a browser's.
-  const headers = { "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36", Accept: "application/json" };
-  const res = await fetch(`https://sports.core.api.espn.com/v2/sports/golf/leagues/lpga/seasons/${year}/types/2/standings/0`, { headers });
-  if (!res.ok) return json({ error: `Standings unavailable (${res.status})` }, 502);
-  const stat = (e, name) => Number(e.records?.[0]?.stats?.find((x) => x.name === name)?.value ?? e.records?.[0]?.stats?.find((x) => x.name === name)?.displayValue?.replace(/[$,]/g, "")) || 0;
-  const entries = ((await res.json()).standings || [])
-    .map((e) => ({ ref: e.athlete?.$ref, points: stat(e, "cupPoints"), money: stat(e, "amount"), wins: stat(e, "wins") }))
-    .filter((e) => e.ref)
-    .sort((a, b) => b.points - a.points || b.money - a.money)
-    .slice(0, 40);
-  const byPoints = entries.some((e) => e.points > 0);
-  const people = await Promise.all(
-    entries.map((e) =>
-      fetch(e.ref.replace(/^http:/, "https:"), { headers })
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null)
-    )
-  );
-  const items = entries.map((e, i) => ({
-    rank: i + 1,
-    name: people[i]?.displayName || people[i]?.fullName || "",
-    flag: people[i]?.flag?.href || "",
-    value: byPoints ? Math.round(e.points).toLocaleString("en-US") : `$${Math.round(e.money).toLocaleString("en-US")}`,
-    wins: e.wins,
-  }));
-  const data = { title: byPoints ? "Race to the CME Globe" : "LPGA Money List", valueLabel: byPoints ? "PTS" : "EARNINGS", items, at: Date.now() };
-  await env.DB.prepare("INSERT INTO config (k, v) VALUES ('lpga-race', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind(JSON.stringify(data)).run();
-  return json(data, 200, { "Cache-Control": "public, max-age=3600" });
+  if (!saved) return json({ error: "LPGA standings aren't ready yet" }, 503);
+  return json(JSON.parse(saved.v), 200, { "Cache-Control": "public, max-age=3600" });
 }
 
 // ---------- highlight videos ----------

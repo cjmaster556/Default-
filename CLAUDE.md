@@ -63,8 +63,9 @@ Plain HTML/CSS/JS, no build step. `app.js` is one IIFE (about 3,000 lines), orga
   tap a golfer for rounds and holes, and follow them there or in the picker (`fetchGolfers`: this week's field plus recent weeks').
   Followed golfers are pinned in a "Your golfers" section atop the leaderboard. Share uses `golfShareCard` (top 5 + yours).
   Golf standings via the Worker's `/golf-rankings?league=`: PGA = the Official World Golf Ranking (OWGR's public API; its
-  `gender=F` is ignored, so no women's list there). LPGA = ESPN core-API season standings sorted by points (`lpgaRace`: the
-  list only links to each golfer, so the top 40 names are looked up and the result kept in D1 config for 6 hours).
+  `gender=F` is ignored, so no women's list there). LPGA = ESPN core-API season standings sorted by points. That service
+  answers 403 to Cloudflare, so `.github/workflows/golf-standings.yml` (daily) builds the top 40 with names and stores it in
+  D1 config `lpga-race`, which `lpgaRace` serves.
   Switching tabs from a league's scores opens the new tab on that league (`setTab`). Server: `golfAlerts` (followed golfer takes, ties, or goes clear in the lead; final
   result), with `golfCardData` so the service worker draws a mini leaderboard picture (`drawGolfCard`).
 - **Logos**: `logo()` uses ESPN's dark-background variant (`/500-dark/`, via `darkLogo`) since the app is dark (the Rams' navy logo

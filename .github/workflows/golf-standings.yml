@@ -1,0 +1,68 @@
+name: Update LPGA standings
+
+# ESPN's detailed standings service turns away the alerts server's network, but
+# answers GitHub's. So once a day GitHub builds the LPGA season points race and
+# saves it in the alerts server's database, where the app reads it.
+on:
+  schedule:
+    - cron: "17 11 * * *"
+  push:
+    paths:
+      - ".github/workflows/golf-standings.yml"
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: alerts-worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER: npx --yes wrangler@4.145.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build the season points race
+        run: |
+          year=$(date -u +%Y)
+          curl -sS --max-time 60 "https://sports.core.api.espn.com/v2/sports/golf/leagues/lpga/seasons/$year/types/2/standings/0" > /tmp/st.json
+          # Each golfer's points (or earnings), best first; keep the top 40.
+          jq -c '[.standings[] | {ref: .athlete["$ref"],
+              points: ([.records[0].stats[]? | select(.name == "cupPoints") | (.value // 0)] | first // 0),
+              money: ([.records[0].stats[]? | select(.name == "amount") | (.value // 0)] | first // 0),
+              wins: ([.records[0].stats[]? | select(.name == "wins") | (.value // 0)] | first // 0)}]
+            | sort_by(-.points, -.money) | .[0:40]' /tmp/st.json > /tmp/top.json
+          byPoints=$(jq '[.[].points] | max > 0' /tmp/top.json)
+          : > /tmp/rows.jsonl
+          n=0
+          jq -c '.[]' /tmp/top.json | while read -r e; do
+            n=$((n + 1))
+            ref=$(echo "$e" | jq -r '.ref' | sed 's|^http:|https:|')
+            curl -sS --max-time 20 "$ref" > /tmp/a.json || echo '{}' > /tmp/a.json
+            jq -c --argjson e "$e" --argjson rank "$n" --argjson byPoints "$byPoints" '{
+                rank: $rank,
+                name: (.displayName // .fullName // ""),
+                flag: (.flag.href // ""),
+                value: (if $byPoints then ($e.points | floor | tostring) else ("$" + ($e.money | floor | tostring)) end),
+                wins: ($e.wins | floor)
+              }' /tmp/a.json >> /tmp/rows.jsonl
+          done
+          jq -s --argjson byPoints "$byPoints" --argjson at "$(date +%s000)" '{
+              title: (if $byPoints then "Race to the CME Globe" else "LPGA Money List" end),
+              valueLabel: (if $byPoints then "PTS" else "EARNINGS" end),
+              items: ., at: $at}' /tmp/rows.jsonl > /tmp/race.json
+          jq -c '{title, n: (.items | length), top: .items[0:3]}' /tmp/race.json
+          test "$(jq '.items | length' /tmp/race.json)" -gt 0
+
+      - name: Save it for the alerts server
+        run: |
+          id=$($WRANGLER d1 list --json | jq -r '.[] | select(.name == "scoreline-alerts") | (.uuid // .id)' | head -n1)
+          sed -i "s/__D1_DATABASE_ID__/$id/" wrangler.toml
+          v=$(sed "s/'/''/g" /tmp/race.json)
+          printf "INSERT INTO config (k, v) VALUES ('lpga-race', '%s') ON CONFLICT(k) DO UPDATE SET v = excluded.v;\n" "$v" > /tmp/race.sql
+          $WRANGLER d1 execute scoreline-alerts --remote --file /tmp/race.sql --yes
