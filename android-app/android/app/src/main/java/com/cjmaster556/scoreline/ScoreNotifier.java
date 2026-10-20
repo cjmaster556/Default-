@@ -12,7 +12,10 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.RadialGradient;
 import android.graphics.RectF;
+import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.widget.RemoteViews;
@@ -75,7 +78,7 @@ final class ScoreNotifier {
                 Bitmap la = logo(ctx, a.optString("logo"));
                 Bitmap lh = logo(ctx, h.optString("logo"));
                 big = drawCard(card, a, h, la, lh, silent ? "Scoreline" : title, !silent);
-                row = drawRow(card, a, h, la, lh);
+                row = drawRow(card, a, h, la, lh, silent ? 0 : 26);
             } catch (Exception | OutOfMemoryError e) {
                 big = null;
                 row = null;
@@ -192,7 +195,9 @@ final class ScoreNotifier {
         String st = c.optString("st");
         String line = c.optString("line");
         Canvas g = new Canvas();
-        Bitmap bmp = canvas(g, W, (line.isEmpty() ? 330 : 480) + 70);
+        int H = (line.isEmpty() ? 330 : 480) + 70;
+        Bitmap bmp = canvas(g, W, H, 0);
+        glow(g, a, h, W, 70 + 145, W * 0.55f);
         Paint p = paint();
         p.setTypeface(strong ? BOLD : MEDIUM);
         p.setTextSize(strong ? 40 : 34);
@@ -219,12 +224,16 @@ final class ScoreNotifier {
     }
 
     // One row for the collapsed notification: logo, abbreviation and score on each side, clock between.
-    private static Bitmap drawRow(JSONObject c, JSONObject a, JSONObject h, Bitmap la, Bitmap lh) {
+    // Drawn a little taller than the row (shown center-cropped) so the glow reaches the notification's edges;
+    // rounded when it sits under an alert's text instead.
+    private static Bitmap drawRow(JSONObject c, JSONObject a, JSONObject h, Bitmap la, Bitmap lh, float radius) {
         int W = 1000;
-        int H = 140;
+        int H = radius > 0 ? 140 : 180;
         String st = c.optString("st");
         Canvas g = new Canvas();
-        Bitmap bmp = canvas(g, W, H);
+        Bitmap bmp = canvas(g, W, H, radius);
+        glow(g, a, h, W, H / 2f, W * 0.45f);
+        g.translate(0, (H - 140) / 2f);
         Paint p = paint();
         int tile = 104;
         side(g, p, st, a, la, 18, 18, tile, 320, 70, 84, 0, 0);
@@ -236,15 +245,32 @@ final class ScoreNotifier {
         return bmp;
     }
 
-    // Plain dark, like Google's card; the layouts use the same color around the picture (notif_bg).
+    // Dark like Google's card, under the team-color glow; the layouts use the same color around the picture (notif_bg).
     static final int BG = 0xFF1E2129;
 
-    private static Bitmap canvas(Canvas g, int w, int h) {
+    private static Bitmap canvas(Canvas g, int w, int h, float radius) {
         Bitmap bmp = Bitmap.createBitmap(Math.round(w * SCALE), Math.round(h * SCALE), Bitmap.Config.ARGB_8888);
         g.setBitmap(bmp);
         g.scale(SCALE, SCALE);
+        if (radius > 0) {
+            Path clip = new Path();
+            clip.addRoundRect(new RectF(0, 0, w, h), radius, radius, Path.Direction.CW);
+            g.clipPath(clip);
+        }
         g.drawColor(BG);
         return bmp;
+    }
+
+    // Each team's color glowing in from its side.
+    private static void glow(Canvas g, JSONObject a, JSONObject h, int w, float cy, float r) {
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        float[] xs = { 0, w };
+        JSONObject[] teams = { a, h };
+        for (int i = 0; i < 2; i++) {
+            int col = teamColor(teams[i]);
+            p.setShader(new RadialGradient(xs[i], cy, r, (col & 0xFFFFFF) | 0xCC000000, col & 0xFFFFFF, Shader.TileMode.CLAMP));
+            g.drawPaint(p);
+        }
     }
 
     private static void side(Canvas g, Paint p, String st, JSONObject t, Bitmap logo, float x, float y, int tile, float sx, float sy, float scoreSize, float ay, float abbrSize) {
