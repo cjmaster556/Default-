@@ -146,7 +146,7 @@ The "middle path" toward an APK (user asked to pace it a little each day): a Cap
   The user has the FCM build installed; alerts work in both the APK and the home-screen web app (confirmed with a test alert).
   GitHub's secret scanning flagged the Firebase API key in google-services.json; that key is meant to ship inside apps, so it's fine.
 - Plan, in order: 1) shell + build (done), 2) FCM push so alerts work in the APK (done, confirmed on the phone), 3) native live score notification
-  (ongoing, custom layout; done, the collapsed live row confirmed on the phone during WSH–SF), 4) home screen widget (built, awaiting phone test), 5) Watch buttons through native intents.
+  (ongoing, custom layout; done, the collapsed live row confirmed on the phone during WSH–SF), 4) home screen widget (done, confirmed on the phone), 5) Watch buttons through native intents.
 
 ## Testing
 
