@@ -2059,7 +2059,7 @@
     for (const a of state.tabData[tabDataKey("news", ev._league, "")]?.data || []) {
       if (a.type !== "Media" || !recent(a.published)) continue;
       if (mentions(a.headline) || storyTeams(a).some((id) => ids.includes(id))) {
-        add({ kind: "link", title: a.headline, thumb: a.images?.[0]?.url, published: a.published, href: a.links?.web?.href });
+        add({ kind: "link", title: a.headline, thumb: a.images?.[0]?.url, published: a.published, href: a.links?.web?.href, api: a.links?.api?.self?.href });
       }
     }
     return out.sort((a, b) => new Date(b.published || 0) - new Date(a.published || 0));
@@ -2105,7 +2105,7 @@
 
   // ---- the player's "More highlights" list ----
 
-  const canPlayHere = (h) => (h.kind === "clip" && !!h.src) || (h.kind === "yt" && !noEmbed[h.league]);
+  const canPlayHere = (h) => (h.kind === "clip" && !!h.src) || (h.kind === "link" && !!h.api) || (h.kind === "yt" && !noEmbed[h.league]);
   const itemHref = (h) => (h.kind === "yt" ? watchURL(h.id) : h.href || h.src || "#");
 
   // Play item i of a list in the app's player, with the rest listed underneath.
@@ -2113,7 +2113,25 @@
     state.playlist = { items, index: i };
     const h = items[i];
     if (h.kind === "clip") openClip(h.src, h.title, h.href, h.thumb);
+    else if (h.kind === "link") playNewsClip(h);
     else openVideo(h.id, h.title, h.league);
+  }
+
+  // ESPN's news videos only link to espn.com (which the Android app hands to the ESPN app), but each one's
+  // clip details list the video file itself, so it can play in the app's own player like game clips.
+  async function clipSource(api) {
+    const data = await fetchJSON(api);
+    const v = data?.videos?.[0] || data;
+    const src = v?.links?.source;
+    return src?.HD?.href || src?.full?.href || src?.href || "";
+  }
+
+  async function playNewsClip(h) {
+    try {
+      if (!h.src) h.src = await clipSource(h.api);
+    } catch {}
+    if (h.src) openClip(h.src, h.title, h.href, h.thumb);
+    else if (h.href) window.open(h.href, "_blank", "noopener");
   }
 
   function renderMore() {
@@ -3725,7 +3743,11 @@
     const href = a.links?.web?.href || a.links?.mobile?.href || "#";
     const label = a.type === "Media" ? "Video" : a.type === "Recap" ? "Recap" : "";
     return `
-      <a class="story" href="${esc(href)}" target="_blank" rel="noopener">
+      <a class="story" href="${esc(href)}" target="_blank" rel="noopener"${
+        a.type === "Media" && a.links?.api?.self?.href
+          ? ` data-news-clip="${esc(a.links.api.self.href)}" data-title="${esc(a.headline)}" data-poster="${esc(img || "")}"`
+          : ""
+      }>
         ${img ? `<span class="story-img"><img src="${esc(img)}" alt="" loading="lazy" onerror="this.remove()" />${a.type === "Media" ? '<span class="play" aria-hidden="true"></span>' : ""}</span>` : ""}
         <span class="story-text">
           <span class="story-head">${esc(a.headline)}</span>
@@ -4431,6 +4453,15 @@
     for (const d of [teamDialog, alertsDialog, videoDialog, shareDialog]) if (d.open) d.close();
     if (location.hash === hash) window.dispatchEvent(new HashChangeEvent("hashchange"));
     else location.hash = hash;
+  });
+
+  // News tab videos play in the app's player (see playNewsClip).
+  document.addEventListener("click", (e) => {
+    const story = e.target.closest("[data-news-clip]");
+    if (!story) return;
+    e.preventDefault();
+    state.playlist = null;
+    playNewsClip({ kind: "link", api: story.dataset.newsClip, title: story.dataset.title, thumb: story.dataset.poster, href: story.getAttribute("href") });
   });
 
   alertsBtn.addEventListener("click", openAlertSettings);
