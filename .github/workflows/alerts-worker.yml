@@ -173,5 +173,6 @@ jobs:
           curl -sS --max-time 30 -o /dev/null -w "standings %{http_code}\n" "https://site.api.espn.com/apis/v2/sports/golf/pga/standings"
           curl -sS --max-time 30 "https://site.api.espn.com/apis/v2/sports/golf/pga/standings" | jq -c '{keys: keys, kids: [.children[]? | {name, n: (.standings.entries | length), e0: (.standings.entries[0] | {athlete: .athlete.displayName, team: .team.displayName, stats: [.stats[]? | {name, displayValue}][0:6]})}], direct: (.standings.entries[0:1] // null)}' 2>/dev/null | cut -c1-1500
           echo "== golf rankings through the server"
-          for lg in pga lpga; do get "/golf-rankings?league=$lg" | jq -c '{title, n: (.items | length), top: .items[0:2]}' | cut -c1-500; done
+          get "/golf-rankings?league=pga" | jq -c '{title, n: (.items | length), top: .items[0:2]}' | cut -c1-500
+          curl -sS --max-time 60 -w " [%{http_code}]" "$SERVER/golf-rankings?league=lpga" | cut -c1-700; echo
           echo "== logo proxy"; curl -sS -o /dev/null -w "%{http_code} %{content_type} %{size_download}\n" "$SERVER/logo?src=https://a.espncdn.com/i/teamlogos/nfl/500/buf.png"
