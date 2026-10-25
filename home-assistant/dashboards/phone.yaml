@@ -100,7 +100,7 @@ views:
             content: >-
               **Needs attention**
               {%- set checks = [
-                ('media_player.bedroom_speaker', 'Bedroom speaker offline — alarms won’t sound'),
+                ('media_player.bedroom_speaker', 'Bedroom speaker offline — alarms will ring Caleb’s phone instead'),
                 ('binary_sensor.motion_sensor_motion', 'Hallway motion sensor offline'),
                 ('device_tracker.caleb_s_phone_2', 'Caleb’s phone not reporting location'),
                 ('remote.living_room_tv', 'Living Room TV remote offline'),
@@ -379,7 +379,7 @@ views:
               - { condition: state, entity: media_player.bedroom_speaker, state_not: unavailable }
           - type: markdown
             content: >-
-              ⚠️ Bedroom speaker is offline — the alarm will not play.
+              ⚠️ Bedroom speaker is offline — the alarm will ring Caleb’s phone instead.
             visibility:
               - { condition: state, entity: input_boolean.alarm, state: "on" }
               - { condition: state, entity: media_player.bedroom_speaker, state: unavailable }
