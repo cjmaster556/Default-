@@ -235,17 +235,6 @@ views:
     sections:
       - type: grid
         cards:
-          - type: button
-            name: Open Greene Remote
-            icon: mdi:remote-tv
-            show_state: false
-            tap_action:
-              action: url
-              url_path: app://com.greene.tvremote
-            grid_options: { columns: 12, rows: 1 }
-
-      - type: grid
-        cards:
           - type: heading
             heading: Living Room TV
             icon: mdi:television
