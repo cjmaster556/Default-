@@ -524,12 +524,24 @@ views:
     icon: mdi:car
     type: sections
     max_columns: 2
+    background:
+      image: /local/terrain.jpg
+      opacity: 25
+      size: cover
+      alignment: center
+      attachment: fixed
     sections:
       - type: grid
         cards:
           - type: heading
             heading: GMC Terrain
             icon: mdi:car-estate
+          - type: picture-entity
+            entity: image.2022_gmc_terrain_2022_gmc_terrain_vehicle_image
+            show_name: false
+            show_state: false
+            tap_action: { action: none }
+            grid_options: { columns: 12 }
           - type: markdown
             content: >-
               {%- set aa = is_state('binary_sensor.caleb_s_phone_android_auto_2', 'on') %}
