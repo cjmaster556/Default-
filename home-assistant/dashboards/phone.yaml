@@ -1,0 +1,386 @@
+# Phone dashboard — separate dashboard, does not touch the existing one.
+#
+# Install: Settings → Dashboards → Add dashboard → "New dashboard from scratch"
+#   Title: Phone   Icon: mdi:cellphone   URL: dashboard-phone
+# Open it → ✏️ → ⋮ → Raw configuration editor → replace everything with this file.
+#
+# Custom cards used: custom:firemote-card (the only HACS frontend card installed).
+# Everything else is a built-in card. Media/remote cards hide themselves while
+# the device is unavailable (see audit R3), so the layout stays clean.
+
+title: Phone
+views:
+  # ─────────────────────────────── HOME ───────────────────────────────
+  - title: Home
+    path: home
+    icon: mdi:home
+    type: sections
+    max_columns: 2
+    badges:
+      - type: entity
+        entity: person.caleb_greene
+        show_name: false
+        show_state: true
+      - type: entity
+        entity: person.destiny
+        show_name: false
+        show_state: true
+      - type: entity
+        entity: weather.forecast_home
+        show_name: false
+        state_content: [state, temperature]
+      - type: entity
+        entity: sensor.blink_porch_temperature
+        name: Outside
+        color: orange
+      - type: entity
+        entity: alarm_control_panel.blink_outdoor_cameras
+        show_name: false
+        tap_action:
+          action: navigate
+          navigation_path: /dashboard-phone/security
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Routines
+            icon: mdi:play-circle-outline
+          - type: tile
+            entity: script.night_time_routine
+            name: Goodnight
+            icon: mdi:weather-night
+            color: indigo
+            vertical: true
+            tap_action:
+              action: perform-action
+              perform_action: script.night_time_routine
+              confirmation:
+                text: Run the night routine?
+            grid_options: { columns: 4, rows: 2 }
+          # Direct action: the Morning automation is disabled and time-gated (audit #9)
+          - type: button
+            name: Morning
+            icon: mdi:weather-sunny
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: light.turn_on
+              target: { entity_id: [light.kitchen, light.dining_room, light.living_room_lamp] }
+              data: { brightness_pct: 100 }
+            grid_options: { columns: 4, rows: 2 }
+          - type: button
+            name: All off
+            icon: mdi:power
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: google_assistant_sdk.send_text_command
+              data: { command: Turn off everything }
+              confirmation:
+                text: Turn off everything?
+            grid_options: { columns: 4, rows: 2 }
+
+      - type: grid
+        cards:
+          - type: markdown
+            visibility:
+              - condition: or
+                conditions:
+                  - condition: state
+                    entity: media_player.bedroom_speaker
+                    state: unavailable
+                  - condition: state
+                    entity: binary_sensor.motion_sensor_motion
+                    state: unavailable
+                  - condition: state
+                    entity: device_tracker.caleb_s_phone
+                    state: unknown
+            content: >-
+              **Needs attention**
+              {%- set checks = [
+                ('media_player.bedroom_speaker', 'Bedroom speaker offline — alarms won’t sound'),
+                ('binary_sensor.motion_sensor_motion', 'Hallway motion sensor offline'),
+                ('device_tracker.caleb_s_phone', 'Caleb’s phone not reporting location'),
+                ('remote.living_room_tv', 'Living Room TV remote offline'),
+              ] %}
+              {%- for e, msg in checks if states(e) in ['unavailable', 'unknown'] %}
+
+              • {{ msg }}
+              {%- endfor %}
+              {%- set low = states.sensor
+                  | selectattr('entity_id', 'search', 'battery_level')
+                  | selectattr('state', 'is_number') | list %}
+              {%- for s in low if s.state | int(100) < 20 %}
+
+              • {{ s.name }}: {{ s.state }}%
+              {%- endfor %}
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Living Room
+            icon: mdi:sofa
+            tap_action: { action: navigate, navigation_path: /dashboard-phone/tv }
+          - type: tile
+            entity: light.living_room_lamp
+            name: Lamp
+            features: [{ type: light-brightness }]
+            features_position: bottom
+          - type: tile
+            entity: light.lamp_room
+            name: Lamp Room
+            features: [{ type: light-brightness }]
+            features_position: bottom
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Kitchen & Dining
+            icon: mdi:silverware-fork-knife
+          - type: tile
+            entity: light.kitchen
+            name: Kitchen
+            features: [{ type: light-brightness }]
+            features_position: bottom
+          - type: tile
+            entity: light.kitchen_4
+            name: Kitchen (Cync)
+          - type: tile
+            entity: light.dining_room
+            name: Dining
+            features: [{ type: light-brightness }]
+            features_position: bottom
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Bedroom
+            icon: mdi:bed
+          - type: tile
+            entity: light.bedroom_light_switch
+            name: Ceiling
+          - type: tile
+            entity: light.bedroom_light_1
+            name: Light 1
+          - type: tile
+            entity: light.bedroom_light_2
+            name: Light 2
+          - type: tile
+            entity: switch.fan
+            name: Fan
+            icon: mdi:fan
+          - type: tile
+            entity: light.fan_room
+            name: Fan Room
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Elsewhere
+            icon: mdi:floor-plan
+          - type: tile
+            entity: light.basement
+            name: Basement
+          - type: tile
+            entity: light.basement_1
+            name: Basement 1
+          - type: tile
+            entity: light.office
+            name: Office
+          - type: tile
+            entity: light.hallway_light
+            name: Hallway
+          - type: tile
+            entity: switch.merkury_ww118_smart_plug_socket_1
+            name: Plug
+
+  # ─────────────────────────────── TV ─────────────────────────────────
+  - title: TV
+    path: tv
+    icon: mdi:television
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Living Room TV
+            icon: mdi:television
+          - type: tile
+            entity: media_player.living_room_tv_2
+            name: Google TV
+            features: [{ type: media-player-volume-slider }]
+            features_position: bottom
+            visibility:
+              - { condition: state, entity: media_player.living_room_tv_2, state_not: unavailable }
+          - type: custom:firemote-card
+            entity: remote.living_room_tv
+            device_family: chromecast
+            device_type: google-tv-streamer
+            compatibility_mode: default
+            scale: 100
+            visibility:
+              - { condition: state, entity: remote.living_room_tv, state_not: unavailable }
+          - type: markdown
+            content: Remote offline — Android TV Remote can’t reach the Streamer.
+            visibility:
+              - { condition: state, entity: remote.living_room_tv, state: unavailable }
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Bedroom TV
+            icon: mdi:television-classic
+          - type: tile
+            entity: script.netflix
+            name: Open Stremio
+            icon: mdi:play-box
+            tap_action: { action: perform-action, perform_action: script.netflix }
+          - type: custom:firemote-card
+            entity: remote.bedroom_tv
+            device_family: chromecast
+            device_type: chromecast-google-tv
+            compatibility_mode: default
+            scale: 100
+            visibility:
+              - { condition: state, entity: remote.bedroom_tv, state_not: unavailable }
+          - type: markdown
+            content: Remote offline — Android TV Remote can’t reach the Chromecast.
+            visibility:
+              - { condition: state, entity: remote.bedroom_tv, state: unavailable }
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Xbox
+            icon: mdi:microsoft-xbox
+          - type: tile
+            entity: media_player.xbox
+            name: Xbox Series S
+            vertical: false
+          - type: tile
+            entity: remote.xbox_remote
+            name: Power
+            icon: mdi:power
+
+  # ───────────────────────────── SECURITY ─────────────────────────────
+  - title: Security
+    path: security
+    icon: mdi:cctv
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Blink
+            icon: mdi:shield-home
+          - type: tile
+            entity: alarm_control_panel.blink_outdoor_cameras
+            name: Outdoor
+            features: [{ type: alarm-modes, modes: [armed_away, disarmed] }]
+            features_position: bottom
+            grid_options: { columns: 12 }
+          - type: tile
+            entity: script.turn_on_cameras
+            name: Cameras on
+            icon: mdi:cctv
+            color: red
+            vertical: true
+            tap_action: { action: perform-action, perform_action: script.turn_on_cameras }
+          - type: tile
+            entity: script.turn_off_cameras
+            name: Cameras off
+            icon: mdi:cctv-off
+            vertical: true
+            tap_action: { action: perform-action, perform_action: script.turn_off_cameras }
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Outside
+          - type: picture-entity
+            entity: camera.porch
+            name: Porch
+            camera_view: auto
+          - type: picture-entity
+            entity: camera.front_door
+            name: Back Yard
+            camera_view: auto
+          - type: picture-entity
+            entity: camera.garage
+            name: Garage
+            camera_view: auto
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Inside
+          - type: picture-entity
+            entity: camera.living_room
+            name: Living Room
+            camera_view: auto
+            grid_options: { columns: 6 }
+          - type: picture-entity
+            entity: camera.kitchen
+            name: Kitchen
+            camera_view: auto
+            grid_options: { columns: 6 }
+          - type: picture-entity
+            entity: camera.dining_room
+            name: Dog Room
+            camera_view: auto
+            grid_options: { columns: 6 }
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Motion detection
+          - { type: tile, entity: switch.porch_camera_motion_detection, name: Porch }
+          - { type: tile, entity: switch.front_door_camera_motion_detection, name: Back Yard }
+          - { type: tile, entity: switch.garage_camera_motion_detection, name: Garage }
+          - { type: tile, entity: switch.living_room_camera_motion_detection, name: Living Rm }
+          - { type: tile, entity: switch.kitchen_camera_motion_detection, name: Kitchen }
+          - { type: tile, entity: switch.dining_room_camera_motion_detection, name: Dog Room }
+
+  # ────────────────────────────── ALARM ───────────────────────────────
+  - title: Alarm
+    path: alarm
+    icon: mdi:alarm
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Wake-up
+            icon: mdi:alarm
+          - type: tile
+            entity: input_boolean.alarm
+            name: Alarm enabled
+            grid_options: { columns: 12 }
+          - type: entities
+            entities:
+              - entity: input_datetime.alarm
+                name: First alarm
+              - entity: input_datetime.alarm_2
+                name: Second alarm
+          - type: tile
+            entity: media_player.bedroom_speaker
+            name: Bedroom speaker
+            visibility:
+              - { condition: state, entity: media_player.bedroom_speaker, state_not: unavailable }
+          - type: markdown
+            content: >-
+              ⚠️ Bedroom speaker is offline — the alarm will not play.
+            visibility:
+              - { condition: state, entity: input_boolean.alarm, state: "on" }
+              - { condition: state, entity: media_player.bedroom_speaker, state: unavailable }
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Lists
+            icon: mdi:cart
+          - type: todo-list
+            entity: todo.shopping_list
