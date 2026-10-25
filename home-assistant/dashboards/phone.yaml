@@ -544,6 +544,14 @@ views:
       - type: grid
         cards:
           - type: heading
+            heading: Lists
+            icon: mdi:cart
+          - type: todo-list
+            entity: todo.shopping_list
+
+      - type: grid
+        cards:
+          - type: heading
             heading: Wake-up
             icon: mdi:alarm
           - type: tile
@@ -562,16 +570,9 @@ views:
             visibility:
               - { condition: state, entity: media_player.bedroom_speaker, state_not: unavailable }
           - type: markdown
-            content: >-
-              ⚠️ Bedroom speaker is offline — the alarm will ring Caleb’s phone instead.
             visibility:
               - { condition: state, entity: input_boolean.alarm, state: "on" }
               - { condition: state, entity: media_player.bedroom_speaker, state: unavailable }
-
-      - type: grid
-        cards:
-          - type: heading
-            heading: Lists
-            icon: mdi:cart
-          - type: todo-list
-            entity: todo.shopping_list
+            content: >-
+              ⚠️ Bedroom speaker is offline —
+              the alarm will ring Caleb’s phone instead.
