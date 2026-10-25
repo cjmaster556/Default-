@@ -153,6 +153,14 @@ views:
             features: [{ type: light-brightness }]
             features_position: bottom
             grid_options: { columns: 12 }
+          # Lamp is its own light (area Lamp Room), so the "All living room lights" button above does not touch it
+          - type: tile
+            entity: light.living_room_lamp
+            name: Lamp
+            icon: mdi:floor-lamp
+            features: [{ type: light-brightness }]
+            features_position: bottom
+            grid_options: { columns: 12 }
 
       - type: grid
         cards:
@@ -204,10 +212,6 @@ views:
           - type: tile
             entity: light.hallway_light
             name: Hallway
-          - type: tile
-            entity: light.living_room_lamp
-            name: Lamp
-            icon: mdi:floor-lamp
           - type: tile
             entity: switch.merkury_ww118_smart_plug_socket_1
             name: AC plug
