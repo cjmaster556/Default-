@@ -774,7 +774,7 @@ views:
             icon: mdi:cart
           - type: todo-list
             entity: todo.google_keep_shopping_list
-            name: Shopping list
+            title: Shopping list
 
       - type: grid
         cards:
