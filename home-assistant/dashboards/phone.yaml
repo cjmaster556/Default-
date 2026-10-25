@@ -511,6 +511,62 @@ views:
           - { type: tile, entity: switch.dining_room_camera_motion_detection, name: Dog Room }
 
   # ────────────────────────────── ALARM ───────────────────────────────
+  - title: Car
+    path: car
+    icon: mdi:car
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: GMC Terrain
+            icon: mdi:car-estate
+          - type: markdown
+            content: >-
+              {%- set aa = is_state('binary_sensor.caleb_s_phone_android_auto_2', 'on') %}
+              {%- set bt = 'myGMC' in (state_attr('sensor.caleb_s_phone_bluetooth_connection_2', 'connected_paired_devices') or []) | join(' ') %}
+              {%- set incar = aa or bt %}
+              {%- set odo = states('sensor.caleb_s_phone_car_odometer_2') %}
+              {%- set spd = states('sensor.caleb_s_phone_car_speed_2') %}
+              ## {{ '🚗 Driving' if incar else '🅿️ Parked' }}
+              {%- if incar and spd | is_number %}
+
+              **{{ spd | float | round(0) | int }} mph**
+              {%- endif %}
+
+              Odometer: **{{ '{:,}'.format((odo | float / 5280) | round(0) | int) ~ ' mi' if odo | is_number else 'open Home Assistant on Android Auto to update' }}**
+
+              {{ 'Connected via ' ~ ('Android Auto' if aa else 'Bluetooth') if incar else 'Phone not connected to the Terrain' }} · phone {{ states('sensor.caleb_s_phone_battery_level_2') }}%
+          - type: tile
+            entity: binary_sensor.caleb_s_phone_android_auto_2
+            name: Android Auto
+            icon: mdi:car-connected
+            grid_options: { columns: 6 }
+          - type: tile
+            entity: sensor.caleb_s_phone_car_speed_2
+            name: Speed
+            icon: mdi:speedometer
+            grid_options: { columns: 6 }
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Where it is
+            icon: mdi:map-marker
+          - type: map
+            entities:
+              - entity: device_tracker.caleb_s_phone_2
+                name: Caleb
+            hours_to_show: 24
+            default_zoom: 14
+            grid_options: { columns: 12, rows: 6 }
+          - type: markdown
+            content: >-
+              Location comes from Caleb’s phone, so it shows where the
+              Terrain is while you’re driving it. Fuel, tire pressure,
+              lock and remote start arrive once OnStar is connected.
+
   - title: Living Room Remote
     path: living-room-remote
     subview: true
