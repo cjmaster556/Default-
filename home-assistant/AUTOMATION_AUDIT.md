@@ -91,3 +91,4 @@ New: Arriving home after dark · Terrain lock reminder (+ "Terrain lock from not
 Changed: Everyone left home now also turns on all camera motion detection · Night time also turns off the Xbox · Morning Time also turns off the fan. Backups saved as `*@pre-ideas` in the backups file.
 Not built: lock-state check (OnStar doesn't report locks) and store-zone shopping nudge (no store zone yet).
 - **Shopping list at the store** — when Caleb or Destiny's tracker enters a zone named Costco / Meijer / Walmart and the shopping list has items, send them the list. Zones to be created in the UI (Settings → Areas, labels & zones → Zones).
+- Shopping list at the store now requires 3 minutes in the zone (Walmart is ~0.6 mi from home, so drive-bys shouldn't trigger it). Store coordinates (from Google Plus Codes): Costco 40.88594, -81.43919 · Meijer 40.84681, -81.44269 · Walmart 40.79431, -81.42231.
