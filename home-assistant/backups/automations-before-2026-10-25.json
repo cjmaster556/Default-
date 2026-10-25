@@ -2130,5 +2130,103 @@
     ],
     "hide_members": false,
     "all": false
+  },
+  "1792948260584@pre-fuel-100": {
+    "id": "1792948260584",
+    "alias": "Terrain alerts",
+    "description": "Notifies Caleb when the Terrain gets low on fuel (<50 mi range), oil life drops below 15%, or a tire drops below 30 psi. Data comes from OnStar every 30 min.",
+    "triggers": [
+      {
+        "trigger": "numeric_state",
+        "entity_id": "sensor.2022_gmc_terrain_2022_gmc_terrain_fuel_range_mi",
+        "below": 50,
+        "id": "fuel"
+      },
+      {
+        "trigger": "numeric_state",
+        "entity_id": "sensor.2022_gmc_terrain_2022_gmc_terrain_eol_read",
+        "below": 15,
+        "id": "oil"
+      },
+      {
+        "trigger": "numeric_state",
+        "entity_id": [
+          "sensor.2022_gmc_terrain_2022_gmc_terrain_left_front_tire_pressure_psi",
+          "sensor.2022_gmc_terrain_2022_gmc_terrain_right_front_tire_pressure_psi",
+          "sensor.2022_gmc_terrain_2022_gmc_terrain_left_rear_tire_pressure_psi",
+          "sensor.2022_gmc_terrain_2022_gmc_terrain_right_rear_tire_pressure_psi"
+        ],
+        "below": 30,
+        "id": "tire"
+      }
+    ],
+    "conditions": [],
+    "actions": [
+      {
+        "choose": [
+          {
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "fuel"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "notify.mobile_app_caleb_s_phone",
+                "data": {
+                  "title": "⛽ Terrain low on gas",
+                  "message": "About {{ states('sensor.2022_gmc_terrain_2022_gmc_terrain_fuel_range_mi') | float(0) | round(0) | int }} miles of range left ({{ states('sensor.2022_gmc_terrain_2022_gmc_terrain_fuel_level') | float(0) | round(0) | int }}%).",
+                  "data": {
+                    "tag": "terrain_fuel"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "oil"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "notify.mobile_app_caleb_s_phone",
+                "data": {
+                  "title": "🛢️ Terrain oil change due",
+                  "message": "Oil life is at {{ states('sensor.2022_gmc_terrain_2022_gmc_terrain_eol_read') | float(0) | round(0) | int }}%. Time to book an oil change.",
+                  "data": {
+                    "tag": "terrain_oil"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "tire"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "notify.mobile_app_caleb_s_phone",
+                "data": {
+                  "title": "🛞 Terrain tire pressure low",
+                  "message": "{{ trigger.to_state.name | replace('2022 GMC Terrain ','') | replace(' Tire Pressure Psi','') }} tire is at {{ trigger.to_state.state }} psi (recommended {{ states('sensor.2022_gmc_terrain_2022_gmc_terrain_front_placard_psi') }} psi).",
+                  "data": {
+                    "tag": "terrain_tire"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "mode": "queued"
   }
 }
