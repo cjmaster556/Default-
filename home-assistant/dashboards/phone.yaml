@@ -219,11 +219,8 @@ views:
             heading: Elsewhere
             icon: mdi:floor-plan
           - type: tile
-            entity: light.basement
+            entity: light.basement_lights
             name: Basement
-          - type: tile
-            entity: light.basement_1
-            name: Basement 1
           - type: tile
             entity: light.office
             name: Office
