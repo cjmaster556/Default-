@@ -1036,5 +1036,41 @@
       }
     ],
     "mode": "single"
+  },
+  "coming_home@pre-speaker-tts": {
+    "id": "1738428018879",
+    "alias": "Coming Home",
+    "description": "When Caleb arrives: indoor/porch/back-yard motion detection off, broadcast, lamp room on.",
+    "triggers": [
+      {
+        "trigger": "zone",
+        "entity_id": "device_tracker.caleb_s_phone_2",
+        "zone": "zone.home",
+        "event": "enter"
+      }
+    ],
+    "conditions": [],
+    "actions": [
+      {
+        "action": "script.turn_off_cameras",
+        "data": {}
+      },
+      {
+        "action": "google_assistant_sdk.send_text_command",
+        "metadata": {},
+        "data": {
+          "command": "Broadcast Caleb is home"
+        }
+      },
+      {
+        "action": "light.turn_on",
+        "metadata": {},
+        "target": {
+          "entity_id": "light.lamp_room"
+        },
+        "data": {}
+      }
+    ],
+    "mode": "single"
   }
 }
