@@ -163,11 +163,6 @@ views:
             features: [{ type: light-brightness }]
             features_position: bottom
             grid_options: { columns: 12 }
-          - type: tile
-            entity: light.lamp_room
-            name: Lamp Room
-            features: [{ type: light-brightness }]
-            features_position: bottom
 
       - type: grid
         cards:
