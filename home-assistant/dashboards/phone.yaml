@@ -238,6 +238,10 @@ views:
           - type: heading
             heading: Living Room TV
             icon: mdi:television
+          - type: media-control
+            entity: media_player.living_room_tv_4
+            visibility:
+              - { condition: state, entity: media_player.living_room_tv_4, state_not: unavailable }
           - type: tile
             entity: media_player.living_room_tv_2
             name: Google TV
@@ -263,6 +267,10 @@ views:
           - type: heading
             heading: Bedroom TV
             icon: mdi:television-classic
+          - type: media-control
+            entity: media_player.bedroom_tv_3
+            visibility:
+              - { condition: state, entity: media_player.bedroom_tv_3, state_not: unavailable }
           - type: tile
             entity: script.netflix
             name: Open Stremio
