@@ -364,7 +364,7 @@ views:
             hide_state: true
             tap_action: { action: perform-action, perform_action: script.netflix }
           - type: custom:firemote-card
-            entity: media_player.bedroom_tv_2
+            entity: media_player.android_tv_192_168_68_85
             android_tv_remote_entity: remote.bedroom_tv
             device_family: chromecast
             device_type: chromecast-4k
@@ -373,30 +373,6 @@ views:
             grid_options: { columns: 12 }
             visibility:
               - { condition: state, entity: remote.bedroom_tv, state_not: unavailable }
-          - type: button
-            name: YouTube
-            icon: mdi:youtube
-            show_state: false
-            tap_action:
-              action: perform-action
-              perform_action: remote.turn_on
-              target: { entity_id: remote.bedroom_tv }
-              data: { activity: "https://www.youtube.com" }
-            visibility:
-              - { condition: state, entity: remote.bedroom_tv, state_not: unavailable }
-            grid_options: { columns: 3, rows: 1 }
-          - type: button
-            name: Netflix
-            icon: mdi:netflix
-            show_state: false
-            tap_action:
-              action: perform-action
-              perform_action: remote.turn_on
-              target: { entity_id: remote.bedroom_tv }
-              data: { activity: "https://www.netflix.com/title" }
-            visibility:
-              - { condition: state, entity: remote.bedroom_tv, state_not: unavailable }
-            grid_options: { columns: 3, rows: 1 }
           - type: button
             name: Disney+
             icon: mdi:magic-staff
