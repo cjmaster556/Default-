@@ -2116,5 +2116,19 @@
       }
     ],
     "mode": "parallel"
+  },
+  "group:light.kitchen@pre-merge-kitchen_4": {
+    "entry_id": "01JK51Q08B3JSZV459H6TK6RY4",
+    "entities": [
+      "light.kitchen_1",
+      "light.kitchen_2",
+      "light.kitchen_3",
+      "light.kitchen_5",
+      "light.kitchen_6",
+      "light.kitchen_8",
+      "light.kitchen_9"
+    ],
+    "hide_members": false,
+    "all": false
   }
 }
