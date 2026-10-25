@@ -1362,5 +1362,269 @@
       }
     ],
     "mode": "single"
+  },
+  "night_time@pre-motion-entity": {
+    "id": "1738707990392",
+    "alias": "Night time",
+    "description": "Night routine. Motion only between 22:30 and 02:00; the dashboard/Night button works any time.",
+    "triggers": [
+      {
+        "type": "motion",
+        "device_id": "b8996cfe68267b28ea853dd6e8a3abcf",
+        "entity_id": "9192cd3e414c382dee8172a5e5098ab6",
+        "domain": "binary_sensor",
+        "trigger": "device",
+        "id": "motion"
+      },
+      {
+        "trigger": "state",
+        "entity_id": [
+          "input_button.night_time_button"
+        ],
+        "id": "button"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "or",
+        "conditions": [
+          {
+            "condition": "trigger",
+            "id": "button"
+          },
+          {
+            "condition": "time",
+            "after": "22:30:00",
+            "before": "02:00:00"
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "area_id": "kitchen"
+        }
+      },
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "area_id": "dining_room"
+        }
+      },
+      {
+        "action": "media_player.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "entity_id": [
+            "media_player.living_room_tv_4"
+          ]
+        }
+      },
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "area_id": "living_room"
+        }
+      },
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "area_id": "basement"
+        }
+      },
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "device_id": "5296c15e498e099e31dc4f8ca4f3e5bb"
+        }
+      },
+      {
+        "choose": [
+          {
+            "conditions": [
+              {
+                "condition": "time",
+                "after": "23:30:00",
+                "before": "00:00:00"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "light.turn_on",
+                "metadata": {},
+                "data": {},
+                "target": {
+                  "device_id": "8d6fbdde4486a2e15987ca43bdb7dfd7"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "choose": [
+          {
+            "conditions": [
+              {
+                "condition": "state",
+                "entity_id": "media_player.bedroom_tv_3",
+                "state": "off"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "remote.turn_on",
+                "metadata": {},
+                "data": {
+                  "activity": "com.stremio.one"
+                },
+                "target": {
+                  "device_id": "47771609483f4e9a0cbef0a6db14ebb0"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "action": "media_player.volume_set",
+        "metadata": {},
+        "data": {
+          "volume_level": 0.75
+        },
+        "target": {
+          "entity_id": "media_player.bedroom_tv_3"
+        }
+      },
+      {
+        "action": "switch.turn_on",
+        "target": {
+          "entity_id": "switch.fan"
+        }
+      },
+      {
+        "action": "media_player.play_media",
+        "target": {
+          "entity_id": "media_player.nestmini5941"
+        },
+        "data": {
+          "media": {
+            "media_content_id": "media-source://tts/tts.home_assistant_cloud?message=Night+routine+started&language=en-US&voice=ChristopherNeural",
+            "media_content_type": "provider",
+            "metadata": {
+              "title": "Night routine started",
+              "thumbnail": "https://brands.home-assistant.io/_/tts/logo.png",
+              "media_class": "app",
+              "children_media_class": null,
+              "navigateIds": [
+                {},
+                {
+                  "media_content_type": "app",
+                  "media_content_id": "media-source://tts"
+                },
+                {
+                  "media_content_type": "provider",
+                  "media_content_id": "media-source://tts/tts.home_assistant_cloud?message=Night+routine+started&language=en-US&voice=ChristopherNeural"
+                }
+              ]
+            }
+          }
+        },
+        "enabled": true
+      },
+      {
+        "action": "script.turn_on_cameras",
+        "data": {}
+      },
+      {
+        "action": "media_player.turn_off",
+        "target": {
+          "entity_id": "media_player.xbox"
+        },
+        "continue_on_error": true
+      }
+    ],
+    "mode": "single"
+  },
+  "morning_time@pre-motion-entity": {
+    "id": "1738760324205",
+    "alias": "Morning Time",
+    "description": "Morning lights + cameras off. Motion only 07:00-09:00; the Morning button works any time.",
+    "triggers": [
+      {
+        "type": "motion",
+        "device_id": "b8996cfe68267b28ea853dd6e8a3abcf",
+        "entity_id": "9192cd3e414c382dee8172a5e5098ab6",
+        "domain": "binary_sensor",
+        "trigger": "device",
+        "id": "motion"
+      },
+      {
+        "trigger": "state",
+        "entity_id": [
+          "input_button.morning_time_button"
+        ],
+        "id": "button"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "or",
+        "conditions": [
+          {
+            "condition": "trigger",
+            "id": "button"
+          },
+          {
+            "condition": "time",
+            "after": "07:00:00",
+            "before": "09:00:00"
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "action": "light.turn_on",
+        "metadata": {},
+        "data": {
+          "brightness_pct": 100
+        },
+        "target": {
+          "area_id": [
+            "living_room",
+            "dining_room"
+          ],
+          "entity_id": [
+            "light.kitchen"
+          ]
+        }
+      },
+      {
+        "action": "script.turn_off_cameras",
+        "metadata": {},
+        "data": {}
+      },
+      {
+        "action": "switch.turn_off",
+        "target": {
+          "entity_id": "switch.fan"
+        }
+      }
+    ],
+    "mode": "single"
   }
 }
