@@ -600,10 +600,14 @@ views:
               confirmation:
                 text: Unlock the Terrain?
             grid_options: { columns: 3, rows: 2 }
-          - type: button
+          # Lights up green for 15 min after a successful remote start (estimate from OnStar's command status)
+          - type: tile
+            entity: binary_sensor.terrain_remote_started
             name: Start
             icon: mdi:car-key
-            show_state: false
+            color: green
+            vertical: true
+            hide_state: true
             tap_action:
               action: perform-action
               perform_action: button.press
