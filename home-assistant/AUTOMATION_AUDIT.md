@@ -115,3 +115,9 @@ Not built: lock-state check (OnStar doesn't report locks) and store-zone shoppin
 ### Nabu Casa decision (2026-10-25, final)
 - User chose to keep Nabu Casa. Matter Hub copies removed from Google Home and the hamh add-on stopped. Companion app back on Home Assistant Cloud.
 - Kept as a backup path if Nabu is ever dropped: Tailscale on HA (100.120.200.74, no key expiry), Google Drive Backup add-on, free Google Translate TTS in the 4 automations. Matter Hub (RiDDiX fork, bridge "Home", 9 lights) can be restarted and re-paired; to cancel Nabu later also unlink Home Assistant Cloud in Google Home, move the second iPhone to Tailscale, and drop the Cloud backup location.
+
+### Google Keep sync (2026-10-25)
+- Installed HACS custom integration Google Keep Sync (watkins-matt) with a dedicated Google account (homeassistant5567@gmail.com); the family shopping list note is shared with it. Master token generated on the user's PC and typed in by the user.
+- Entity `todo.google_keep_shopping_list` ("Keep Shopping list"), 15 min sync. HA → Keep verified (tick in HA ticks in Keep).
+- Phone dashboard Alarm tab Lists card now uses this entity. Category headings in Keep appear as unchecked items.
+- "Shopping list at the store" reminder left unchanged (still opens Keep).
