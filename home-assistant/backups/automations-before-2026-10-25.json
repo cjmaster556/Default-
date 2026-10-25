@@ -1626,5 +1626,74 @@
       }
     ],
     "mode": "single"
+  },
+  "basement_on@pre-fp2": {
+    "id": "1738533978980",
+    "alias": "Basement Lights",
+    "description": "",
+    "triggers": [
+      {
+        "type": "occupied",
+        "device_id": "f3f5ad6199132b4b0297e43d866d3c83",
+        "entity_id": "3eafd2cde64e382f1b553c24bfade6e7",
+        "domain": "binary_sensor",
+        "trigger": "device"
+      }
+    ],
+    "conditions": [],
+    "actions": [
+      {
+        "action": "light.turn_on",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "entity_id": [
+            "light.basement_1",
+            "light.basement"
+          ]
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "basement_off@pre-fp2": {
+    "id": "1738534998716",
+    "alias": "Basement Lights off",
+    "description": "",
+    "triggers": [
+      {
+        "type": "not_occupied",
+        "device_id": "f3f5ad6199132b4b0297e43d866d3c83",
+        "entity_id": "3eafd2cde64e382f1b553c24bfade6e7",
+        "domain": "binary_sensor",
+        "trigger": "device",
+        "for": {
+          "hours": 0,
+          "minutes": 5,
+          "seconds": 0
+        }
+      }
+    ],
+    "conditions": [],
+    "actions": [
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "area_id": "basement",
+          "device_id": [
+            "a26a7baf73fa9bf201a8be5ad5d2e932",
+            "6c2f1517a65f8c793fd45cccbde5ba2e"
+          ],
+          "entity_id": [
+            "light.basement_1",
+            "light.basement_3_2",
+            "light.basement_4"
+          ]
+        }
+      }
+    ],
+    "mode": "single"
   }
 }
