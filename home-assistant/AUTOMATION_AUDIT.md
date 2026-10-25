@@ -76,3 +76,4 @@ R2 → R1 → R6 → R3 → R4 → #4/#5 (merged "Everyone left") → #7 (alarm 
 - **Camera scripts** — device actions replaced with `switch.turn_on/off` on the 5 motion-detection switches (same cameras; Garage untouched).
 - **Wife is home** — zone trigger on `device_tracker.iphone`; condition uses `device_tracker.caleb_s_phone_2`.
 - R1 resolved: Caleb's Companion app background location enabled; `caleb_s_phone_2` reports `home`.
+- R2 resolved: `person.caleb_greene` now tracks only `device_tracker.caleb_s_phone_2`. Old mobile_app entry "Caleb's phone" (SM-S928U) deleted; `notify.mobile_app_caleb_s_phone` now unambiguously targets the current phone.
