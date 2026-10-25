@@ -98,3 +98,9 @@ Not built: lock-state check (OnStar doesn't report locks) and store-zone shoppin
 - **Basement tile** — helper group `light.basement_lights` (members `light.basement` [Cync] + `light.basement_1` [Tuya]); the phone dashboard shows one Basement tile.
 - Basement presence sensor is an Aqara (Occupancy + Illuminance in the Aqara Home app); not yet in Home Assistant. Plan: share it via Matter, then repoint the two Basement automations.
 - **Basement FP2 online** — Aqara FP2 (Wi-Fi, 192.168.68.52) re-paired to Home Assistant via the HomeKit Device integration (entry "Presence-Sensor-FP2-9C1D"): Light Level + 3 presence zones, all in the Basement area. New group `binary_sensor.basement_occupied` (on if ANY zone detects presence). **Basement Lights** now turns on `area basement` when it goes on; **Basement Lights off** turns the area off after 5 min of no presence. Both automations are working again (last repairs cleared). Original configs backed up as `*@pre-fp2`.
+
+## Dropping Nabu Casa (in progress)
+- **Step 1 done:** Coming Home, Wife is home, Night time and Freeze warning now speak with the free `tts.google_translate_en_com` engine through `tts.speak` on `media_player.nestmini5941` (no `home_assistant_cloud` references left). Originals saved as `*@pre-free-tts`. Optional upgrade later: Piper (local) for a nicer voice.
+- **Step 2 (user):** set up Tailscale for remote access and test from the phone on mobile data. Not done yet.
+- **Step 3 (user):** local/Google Drive backups. Not done yet.
+- Do **not** cancel Nabu Casa until Tailscale remote access is tested (it also carries the Companion app away from home, the Google Assistant link and Claude's access).
