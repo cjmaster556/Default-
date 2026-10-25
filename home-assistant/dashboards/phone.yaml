@@ -525,6 +525,33 @@ views:
               {%- endif %}
 
               {{ '{:,}'.format(states('sensor.2022_gmc_terrain_2022_gmc_terrain_odo_read_mi') | float(0) | round(0) | int) }} mi · {{ states('sensor.2022_gmc_terrain_2022_gmc_terrain_average_fuel_economy_mpg') }} mpg average · updated {{ relative_time(as_datetime(states('sensor.2022_gmc_terrain_command_status_monitor_sensors_2022_gmc_terrain_command_status_monitor_sensors_polling_status_timestamp'))) }} ago
+          - type: markdown
+            content: >-
+              {%- set p = 'sensor.2022_gmc_terrain_command_status_monitor_sensors_2022_gmc_terrain_command_status_monitor_sensors_command_' %}
+              {%- set cmds = [('startvehicle', 'Start'), ('cancelstartvehicle', 'Stop start'), ('lockdoor', 'Lock'), ('unlockdoor', 'Unlock'), ('flashlights', 'Flash'), ('alerthonk', 'Honk'), ('cancelalert', 'Stop alert'), ('getlocation', 'Locate')] %}
+              {%- set ns = namespace(best=none, label='', status='', st=none, cs=none) %}
+              {%- for key, label in cmds %}
+                {%- set t = states(p ~ key ~ '_status_monitor_timestamp') %}
+                {%- if t not in ['unknown', 'unavailable', 'none', ''] %}
+                  {%- set when = as_datetime(t) %}
+                  {%- if key == 'startvehicle' %}{%- set ns.st = when %}{%- endif %}
+                  {%- if key == 'cancelstartvehicle' %}{%- set ns.cs = when %}{%- endif %}
+                  {%- if ns.best is none or when > ns.best %}
+                    {%- set ns.best = when %}
+                    {%- set ns.label = label %}
+                    {%- set ns.status = states(p ~ key ~ '_status_monitor') %}
+                  {%- endif %}
+                {%- endif %}
+              {%- endfor %}
+              {%- if ns.st is not none and is_state(p ~ 'startvehicle_status_monitor', 'Completed Successfully') and (now() - ns.st).total_seconds() < 900 and (ns.cs is none or ns.cs < ns.st) %}
+              {%- set mins = ((now() - ns.st).total_seconds() / 60) | int %}
+              🟢 **Remote start sent {{ mins }} min ago** · about {{ 15 - mins }} min left (estimate — the car itself has the final say){{ '\n\n' }}
+              {% endif -%}
+              {%- if ns.best is not none %}
+              Last command: **{{ ns.label }}** — {{ ns.status }}, {{ relative_time(ns.best) }} ago
+              {%- else %}
+              No commands sent yet.
+              {%- endif %}
           - type: tile
             entity: sensor.2022_gmc_terrain_2022_gmc_terrain_fuel_level
             name: Fuel
