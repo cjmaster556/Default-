@@ -14,7 +14,7 @@ Status at audit time: 4 on, 5 off (disabled), 2 `unavailable` (broken config).
 | R3 | **All Google Cast devices unavailable** since 2026-08-26 (cast integration *loaded*, 0 live entities) and **both Android TV Remote entries in `setup_retry`** ("Couldn't connect to 192.168.1.111 / .134") | speakers, Nest Hubs, Chromecasts, Google TV Streamer | Alarms, all TTS, Night time TV control, Wife is home, Firemote | Devices likely changed IP or moved network. Give them DHCP reservations, make sure HA is on the same subnet/mDNS, then reconfigure Android TV Remote with the new IPs. |
 | R4 | **Hallway Zigbee motion sensor dead** | Third Reality 3RMS16BZ (`binary_sensor.motion_sensor_motion`) `unavailable` since 2026-08-26 | Night time + Morning Time motion triggers | Replace battery / re-pair in ZHA. |
 | R5 | **Deleted devices still referenced** (device triggers use registry IDs) | basement occupancy sensor `f3f5ad61…` gone; living-room bulbs `light.living_room_1/2/3` (and devices `08858152…`, `e0a8755c…`, `282eee39…`) gone | Basement ×2, Toggle Living Room Lights, `script.living_room_lights` | Re-point to existing entities (below). Prefer entity-based triggers/targets over device ones going forward. |
-| R6 | **Living Room area has no lights** | `area_entities('living_room')` contains TVs, speakers, cameras, printer — zero lights. The lamp is in *Lamp Room* | Every `light.turn_off/on area: living_room` (Wife is home, Night time, Morning Time) is a silent no-op | Move `light.living_room_lamp` (and any real living-room bulbs) into the Living Room area. |
+| R6 | **Living Room area has no lights** | `area_entities('living_room')` contains TVs, speakers, cameras, printer — zero lights. The lamp is in *Lamp Room* | Every `light.turn_off/on area: living_room` (Wife is home, Night time, Morning Time) is a silent no-op | **Decision: the Lamp stays separate** in the Lamp Room area. Remove the dead `area: living_room` light steps; where the lamp should react, target `light.living_room_lamp` explicitly. |
 
 ## Per-automation fix list
 
@@ -25,7 +25,7 @@ Status at audit time: 4 on, 5 off (disabled), 2 `unavailable` (broken config).
 2. **Basement Lights off** (`automation.basement_lights_3`, unavailable) — same dead sensor. Target mixes `area: basement` + 2 devices + 3 entities for the same lights, and omits `light.basement` which the "on" automation turns on.
    *Fix:* target `area_id: basement` only. Rename entity ID to match the name.
 3. **Toggle Living Room Lights** — targets `light.living_room_1/2/3`, none exist → does nothing. `script.living_room_lights` has the same problem (3 deleted devices).
-   *Fix:* target the lights that are actually in the living room (likely `light.living_room_lamp`; confirm). Or simply drop it and use a tile on the dashboard.
+   *Fix:* no living-room bulbs exist any more and the Lamp stays separate, so delete this automation, `input_button.living_room_lights_toggle` and `script.living_room_lights`. The Lamp gets its own tile on the dashboard.
 4. **Leaving Home Destiny** — condition "Caleb's phone is *not* home" passes whenever Caleb's tracker is `unknown` (R1), so **if Destiny leaves while Caleb is home, it runs "Turn off everything" on him**.
    *Fix:* replace both "Leaving" automations with one: trigger `zone.home` state → `0` (everyone gone), or `person.*` conditions after R1/R2.
 5. **Leaving Home** / **Leaving Home Destiny** — both activate `scene.coming_home`, which doesn't exist (there are no scenes at all) → that step does nothing. (The name is also backwards.)

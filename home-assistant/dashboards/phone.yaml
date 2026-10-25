@@ -65,7 +65,7 @@ views:
             tap_action:
               action: perform-action
               perform_action: light.turn_on
-              target: { entity_id: [light.kitchen, light.dining_room, light.living_room_lamp] }
+              target: { entity_id: [light.kitchen, light.dining_room] }
               data: { brightness_pct: 100 }
             grid_options: { columns: 4, rows: 2 }
           - type: button
@@ -118,14 +118,16 @@ views:
       - type: grid
         cards:
           - type: heading
-            heading: Living Room
-            icon: mdi:sofa
-            tap_action: { action: navigate, navigation_path: /dashboard-phone/tv }
+            heading: Lamp Room
+            icon: mdi:floor-lamp
+          # The Lamp is its own light, not part of a "living room" group
           - type: tile
             entity: light.living_room_lamp
             name: Lamp
+            icon: mdi:floor-lamp
             features: [{ type: light-brightness }]
             features_position: bottom
+            grid_options: { columns: 12 }
           - type: tile
             entity: light.lamp_room
             name: Lamp Room
