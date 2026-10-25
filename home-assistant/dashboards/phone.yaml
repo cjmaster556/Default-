@@ -175,9 +175,10 @@ views:
           - type: heading
             heading: Bedroom
             icon: mdi:bed
+          # Wall switch that powers the two bulbs below (they show offline when it is off)
           - type: tile
             entity: light.bedroom_light_switch
-            name: Ceiling
+            name: Light switch
           - type: tile
             entity: light.bedroom_light_1
             name: Light 1
@@ -186,11 +187,11 @@ views:
             name: Light 2
           - type: tile
             entity: switch.fan
-            name: Ceiling fan
+            name: Fan
             icon: mdi:fan
           - type: tile
             entity: light.fan_room
-            name: Fan light
+            name: Fan Room
 
       - type: grid
         cards:
