@@ -111,3 +111,7 @@ Not built: lock-state check (OnStar doesn't report locks) and store-zone shoppin
 - Step 3 done: Google Drive Backup add-on authenticated; encryption key saved by user.
 - Step 4 done: Matter Hub (RiDDiX fork, hamh 2.0.59) bridge "Home", include-only filter for 9 lights, paired to Google Home; lights verified.
 - Still to do before cancelling: wife's iPhone needs Tailscale (second `mobile_app` entry), unlink Home Assistant Cloud in Google Home, switch backup location off Cloud, then sign out of Home Assistant Cloud / cancel.
+
+### Nabu Casa decision (2026-10-25, final)
+- User chose to keep Nabu Casa. Matter Hub copies removed from Google Home and the hamh add-on stopped. Companion app back on Home Assistant Cloud.
+- Kept as a backup path if Nabu is ever dropped: Tailscale on HA (100.120.200.74, no key expiry), Google Drive Backup add-on, free Google Translate TTS in the 4 automations. Matter Hub (RiDDiX fork, bridge "Home", 9 lights) can be restarted and re-paired; to cancel Nabu later also unlink Home Assistant Cloud in Google Home, move the second iPhone to Tailscale, and drop the Cloud backup location.
