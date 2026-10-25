@@ -122,14 +122,15 @@ views:
           - type: heading
             heading: Living Room
             icon: mdi:sofa
-            badges:
-              - type: entity
-                entity: light.living_room_living_room_1
-                show_state: false
-                tap_action:
-                  action: perform-action
-                  perform_action: light.toggle
-                  target: { area_id: living_room }
+          - type: button
+            name: All living room lights
+            icon: mdi:lightbulb-group
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: light.toggle
+              target: { area_id: living_room }
+            grid_options: { columns: 12, rows: 1 }
           - type: tile
             entity: light.living_room_living_room_1
             name: Light 1
