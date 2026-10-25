@@ -781,5 +781,260 @@
     ],
     "alias": "Turn off Cameras",
     "description": ""
+  },
+  "wife_is_home@pre-network-repoint": {
+    "id": "1738430936616",
+    "alias": "Wife is home",
+    "description": "When Destiny arrives and Caleb is already home.",
+    "triggers": [
+      {
+        "trigger": "zone",
+        "entity_id": "device_tracker.iphone",
+        "zone": "zone.home",
+        "event": "enter"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "zone",
+        "entity_id": "device_tracker.caleb_s_phone_2",
+        "zone": "zone.home"
+      }
+    ],
+    "actions": [
+      {
+        "action": "media_player.play_media",
+        "target": {
+          "entity_id": "media_player.living_room_speaker"
+        },
+        "data": {
+          "media_content_id": "media-source://tts/tts.home_assistant_cloud?message=I%27m+Home+babe&language=en-US&voice=ChristopherNeural",
+          "media_content_type": "provider"
+        },
+        "metadata": {
+          "title": "I'm Home babe",
+          "thumbnail": "https://brands.home-assistant.io/_/tts/logo.png",
+          "media_class": "app",
+          "children_media_class": null,
+          "navigateIds": [
+            {},
+            {
+              "media_content_type": "app",
+              "media_content_id": "media-source://tts"
+            },
+            {
+              "media_content_type": "provider",
+              "media_content_id": "media-source://tts/tts.home_assistant_cloud?message=I%27m+Home+babe&language=en-US&voice=ChristopherNeural"
+            }
+          ]
+        }
+      },
+      {
+        "action": "media_player.media_pause",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "device_id": "df86089cbec97b896bef9955608bb416"
+        }
+      },
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "area_id": "living_room"
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "night_time@pre-network-repoint": {
+    "id": "1738707990392",
+    "alias": "Night time",
+    "description": "Night routine. Motion only between 22:30 and 02:00; the dashboard/Night button works any time.",
+    "triggers": [
+      {
+        "type": "motion",
+        "device_id": "b8996cfe68267b28ea853dd6e8a3abcf",
+        "entity_id": "9192cd3e414c382dee8172a5e5098ab6",
+        "domain": "binary_sensor",
+        "trigger": "device",
+        "id": "motion"
+      },
+      {
+        "trigger": "state",
+        "entity_id": [
+          "input_button.night_time_button"
+        ],
+        "id": "button"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "or",
+        "conditions": [
+          {
+            "condition": "trigger",
+            "id": "button"
+          },
+          {
+            "condition": "time",
+            "after": "22:30:00",
+            "before": "02:00:00"
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "area_id": "kitchen"
+        }
+      },
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "area_id": "dining_room"
+        }
+      },
+      {
+        "action": "media_player.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "entity_id": [
+            "media_player.living_room_tv"
+          ]
+        }
+      },
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "area_id": "living_room"
+        }
+      },
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "area_id": "basement"
+        }
+      },
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "device_id": "5296c15e498e099e31dc4f8ca4f3e5bb"
+        }
+      },
+      {
+        "choose": [
+          {
+            "conditions": [
+              {
+                "condition": "time",
+                "after": "23:30:00",
+                "before": "00:00:00"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "light.turn_on",
+                "metadata": {},
+                "data": {},
+                "target": {
+                  "device_id": "8d6fbdde4486a2e15987ca43bdb7dfd7"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "choose": [
+          {
+            "conditions": [
+              {
+                "condition": "state",
+                "entity_id": "media_player.bedroom_tv_2",
+                "state": "off"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "remote.turn_on",
+                "metadata": {},
+                "data": {
+                  "activity": "com.stremio.one"
+                },
+                "target": {
+                  "device_id": "47771609483f4e9a0cbef0a6db14ebb0"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "action": "media_player.volume_set",
+        "metadata": {},
+        "data": {
+          "volume_level": 0.75
+        },
+        "target": {
+          "device_id": "86349caf2f1bb2c88c436da6e38f7dc0"
+        }
+      },
+      {
+        "action": "switch.turn_on",
+        "target": {
+          "entity_id": "switch.fan"
+        }
+      },
+      {
+        "action": "media_player.play_media",
+        "target": {
+          "entity_id": "media_player.living_room_speaker"
+        },
+        "data": {
+          "media": {
+            "media_content_id": "media-source://tts/tts.home_assistant_cloud?message=Night+routine+started&language=en-US&voice=ChristopherNeural",
+            "media_content_type": "provider",
+            "metadata": {
+              "title": "Night routine started",
+              "thumbnail": "https://brands.home-assistant.io/_/tts/logo.png",
+              "media_class": "app",
+              "children_media_class": null,
+              "navigateIds": [
+                {},
+                {
+                  "media_content_type": "app",
+                  "media_content_id": "media-source://tts"
+                },
+                {
+                  "media_content_type": "provider",
+                  "media_content_id": "media-source://tts/tts.home_assistant_cloud?message=Night+routine+started&language=en-US&voice=ChristopherNeural"
+                }
+              ]
+            }
+          }
+        },
+        "enabled": true
+      },
+      {
+        "action": "script.turn_on_cameras",
+        "data": {}
+      }
+    ],
+    "mode": "single"
   }
 }
