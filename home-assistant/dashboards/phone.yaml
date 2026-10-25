@@ -249,14 +249,14 @@ views:
             features_position: bottom
             visibility:
               - { condition: state, entity: media_player.living_room_tv_2, state_not: unavailable }
-          - type: custom:firemote-card
-            entity: media_player.android_tv_192_168_68_51
-            android_tv_remote_entity: remote.living_room_tv
-            device_family: chromecast
-            device_type: chromecast-4k
-            compatibility_mode: default
-            scale: 100
-            grid_options: { columns: 12 }
+          - type: button
+            name: Open remote
+            icon: mdi:remote-tv
+            show_state: false
+            tap_action:
+              action: navigate
+              navigation_path: /dashboard-phone/living-room-remote
+            grid_options: { columns: 12, rows: 1 }
             visibility:
               - { condition: state, entity: remote.living_room_tv, state_not: unavailable }
           - type: button
@@ -339,14 +339,14 @@ views:
             icon: mdi:play-box
             hide_state: true
             tap_action: { action: perform-action, perform_action: script.netflix }
-          - type: custom:firemote-card
-            entity: media_player.android_tv_192_168_68_85
-            android_tv_remote_entity: remote.bedroom_tv
-            device_family: chromecast
-            device_type: chromecast-4k
-            compatibility_mode: default
-            scale: 100
-            grid_options: { columns: 12 }
+          - type: button
+            name: Open remote
+            icon: mdi:remote-tv
+            show_state: false
+            tap_action:
+              action: navigate
+              navigation_path: /dashboard-phone/bedroom-remote
+            grid_options: { columns: 12, rows: 1 }
             visibility:
               - { condition: state, entity: remote.bedroom_tv, state_not: unavailable }
           - type: button
@@ -511,6 +511,50 @@ views:
           - { type: tile, entity: switch.dining_room_camera_motion_detection, name: Dog Room }
 
   # ────────────────────────────── ALARM ───────────────────────────────
+  - title: Living Room Remote
+    path: living-room-remote
+    subview: true
+    back_path: /dashboard-phone/tv
+    type: sections
+    max_columns: 1
+    sections:
+      - type: grid
+        cards:
+          - type: media-control
+            entity: media_player.living_room_tv_4
+            visibility:
+              - { condition: state, entity: media_player.living_room_tv_4, state_not: unavailable }
+          - type: custom:firemote-card
+            entity: media_player.android_tv_192_168_68_51
+            android_tv_remote_entity: remote.living_room_tv
+            device_family: chromecast
+            device_type: chromecast-4k
+            compatibility_mode: default
+            scale: 100
+            grid_options: { columns: 12 }
+
+  - title: Bedroom Remote
+    path: bedroom-remote
+    subview: true
+    back_path: /dashboard-phone/tv
+    type: sections
+    max_columns: 1
+    sections:
+      - type: grid
+        cards:
+          - type: media-control
+            entity: media_player.bedroom_tv_3
+            visibility:
+              - { condition: state, entity: media_player.bedroom_tv_3, state_not: unavailable }
+          - type: custom:firemote-card
+            entity: media_player.android_tv_192_168_68_85
+            android_tv_remote_entity: remote.bedroom_tv
+            device_family: chromecast
+            device_type: chromecast-4k
+            compatibility_mode: default
+            scale: 100
+            grid_options: { columns: 12 }
+
   - title: Alarm
     path: alarm
     icon: mdi:alarm
