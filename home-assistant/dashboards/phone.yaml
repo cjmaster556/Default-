@@ -235,6 +235,17 @@ views:
     sections:
       - type: grid
         cards:
+          - type: button
+            name: Open Greene Remote
+            icon: mdi:remote-tv
+            show_state: false
+            tap_action:
+              action: url
+              url_path: app://com.greene.tvremote
+            grid_options: { columns: 12, rows: 1 }
+
+      - type: grid
+        cards:
           - type: heading
             heading: Living Room TV
             icon: mdi:television
@@ -257,6 +268,90 @@ views:
             scale: 100
             visibility:
               - { condition: state, entity: remote.living_room_tv, state_not: unavailable }
+          - type: button
+            name: Netflix
+            icon: mdi:netflix
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: remote.turn_on
+              target: { entity_id: remote.living_room_tv }
+              data: { activity: "https://www.netflix.com/title" }
+            visibility:
+              - { condition: state, entity: remote.living_room_tv, state_not: unavailable }
+            grid_options: { columns: 3, rows: 1 }
+          - type: button
+            name: YouTube
+            icon: mdi:youtube
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: remote.turn_on
+              target: { entity_id: remote.living_room_tv }
+              data: { activity: "https://www.youtube.com" }
+            visibility:
+              - { condition: state, entity: remote.living_room_tv, state_not: unavailable }
+            grid_options: { columns: 3, rows: 1 }
+          - type: button
+            name: Disney+
+            icon: mdi:magic-staff
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: remote.turn_on
+              target: { entity_id: remote.living_room_tv }
+              data: { activity: "https://www.disneyplus.com" }
+            visibility:
+              - { condition: state, entity: remote.living_room_tv, state_not: unavailable }
+            grid_options: { columns: 3, rows: 1 }
+          - type: button
+            name: Prime
+            icon: mdi:filmstrip-box
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: remote.turn_on
+              target: { entity_id: remote.living_room_tv }
+              data: { activity: "https://app.primevideo.com" }
+            visibility:
+              - { condition: state, entity: remote.living_room_tv, state_not: unavailable }
+            grid_options: { columns: 3, rows: 1 }
+          - type: button
+            name: Hulu
+            icon: mdi:alpha-h-box
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: remote.turn_on
+              target: { entity_id: remote.living_room_tv }
+              data: { activity: "https://www.hulu.com" }
+            visibility:
+              - { condition: state, entity: remote.living_room_tv, state_not: unavailable }
+            grid_options: { columns: 3, rows: 1 }
+          - type: button
+            name: Max
+            icon: mdi:alpha-m-box
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: remote.turn_on
+              target: { entity_id: remote.living_room_tv }
+              data: { activity: "https://play.max.com" }
+            visibility:
+              - { condition: state, entity: remote.living_room_tv, state_not: unavailable }
+            grid_options: { columns: 3, rows: 1 }
+          - type: button
+            name: Spotify
+            icon: mdi:spotify
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: remote.turn_on
+              target: { entity_id: remote.living_room_tv }
+              data: { activity: "spotify://" }
+            visibility:
+              - { condition: state, entity: remote.living_room_tv, state_not: unavailable }
+            grid_options: { columns: 3, rows: 1 }
           - type: markdown
             content: Remote offline — Android TV Remote can’t reach the Streamer.
             visibility:
@@ -285,6 +380,90 @@ views:
             scale: 100
             visibility:
               - { condition: state, entity: remote.bedroom_tv, state_not: unavailable }
+          - type: button
+            name: Netflix
+            icon: mdi:netflix
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: remote.turn_on
+              target: { entity_id: remote.bedroom_tv }
+              data: { activity: "https://www.netflix.com/title" }
+            visibility:
+              - { condition: state, entity: remote.bedroom_tv, state_not: unavailable }
+            grid_options: { columns: 3, rows: 1 }
+          - type: button
+            name: YouTube
+            icon: mdi:youtube
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: remote.turn_on
+              target: { entity_id: remote.bedroom_tv }
+              data: { activity: "https://www.youtube.com" }
+            visibility:
+              - { condition: state, entity: remote.bedroom_tv, state_not: unavailable }
+            grid_options: { columns: 3, rows: 1 }
+          - type: button
+            name: Disney+
+            icon: mdi:magic-staff
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: remote.turn_on
+              target: { entity_id: remote.bedroom_tv }
+              data: { activity: "https://www.disneyplus.com" }
+            visibility:
+              - { condition: state, entity: remote.bedroom_tv, state_not: unavailable }
+            grid_options: { columns: 3, rows: 1 }
+          - type: button
+            name: Prime
+            icon: mdi:filmstrip-box
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: remote.turn_on
+              target: { entity_id: remote.bedroom_tv }
+              data: { activity: "https://app.primevideo.com" }
+            visibility:
+              - { condition: state, entity: remote.bedroom_tv, state_not: unavailable }
+            grid_options: { columns: 3, rows: 1 }
+          - type: button
+            name: Hulu
+            icon: mdi:alpha-h-box
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: remote.turn_on
+              target: { entity_id: remote.bedroom_tv }
+              data: { activity: "https://www.hulu.com" }
+            visibility:
+              - { condition: state, entity: remote.bedroom_tv, state_not: unavailable }
+            grid_options: { columns: 3, rows: 1 }
+          - type: button
+            name: Max
+            icon: mdi:alpha-m-box
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: remote.turn_on
+              target: { entity_id: remote.bedroom_tv }
+              data: { activity: "https://play.max.com" }
+            visibility:
+              - { condition: state, entity: remote.bedroom_tv, state_not: unavailable }
+            grid_options: { columns: 3, rows: 1 }
+          - type: button
+            name: Spotify
+            icon: mdi:spotify
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: remote.turn_on
+              target: { entity_id: remote.bedroom_tv }
+              data: { activity: "spotify://" }
+            visibility:
+              - { condition: state, entity: remote.bedroom_tv, state_not: unavailable }
+            grid_options: { columns: 3, rows: 1 }
           - type: markdown
             content: Remote offline — Android TV Remote can’t reach the Chromecast.
             visibility:
