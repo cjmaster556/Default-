@@ -69,3 +69,4 @@ R2 → R1 → R6 → R3 → R4 → #4/#5 (merged "Everyone left") → #7 (alarm 
 - **#9 Morning Time** — enabled. Button bypasses the 07:00–09:00 window; kitchen bulbs → `light.kitchen` group.
 - **Basement** — left as is until the sensor is fixed.
 - Note for R1: Caleb's live phone is `caleb_s_phone_2` (SM-S948U); `caleb_s_phone` (SM-S928U) is an old registration to delete.
+- **#7 Alarms** — renamed **Wake alarm 1 / Wake alarm 2**. If `media_player.bedroom_speaker` is unavailable/unknown, rings Caleb's phone instead (`notify.mobile_app_caleb_s_phone`: TTS on `alarm_stream_max` + high-priority notification); otherwise plays on the speaker as before (`continue_on_error`). Both Caleb phone registrations share the name "Caleb's phone", so only one `mobile_app_caleb_s_phone` service exists — delete the old registration so it's guaranteed to target the current phone.

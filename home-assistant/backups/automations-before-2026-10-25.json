@@ -437,5 +437,100 @@
       }
     ],
     "mode": "single"
+  },
+  "music_test": {
+    "id": "1742535467728",
+    "alias": "Music test",
+    "description": "",
+    "triggers": [
+      {
+        "trigger": "time",
+        "at": "input_datetime.alarm"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "state",
+        "entity_id": "input_boolean.alarm",
+        "state": "on"
+      }
+    ],
+    "actions": [
+      {
+        "action": "media_player.play_media",
+        "metadata": {},
+        "data": {
+          "media": {
+            "media_content_id": "media-source://media_source/local/crazy_chicken_alarm.mp3",
+            "media_content_type": "audio/mpeg",
+            "metadata": {
+              "title": "crazy_chicken_alarm.mp3",
+              "thumbnail": null,
+              "media_class": "music",
+              "children_media_class": null,
+              "navigateIds": [
+                {},
+                {
+                  "media_content_type": "app",
+                  "media_content_id": "media-source://media_source"
+                }
+              ],
+              "browse_entity_id": "media_player.bedroom_speaker"
+            }
+          }
+        },
+        "target": {
+          "entity_id": "media_player.bedroom_speaker"
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "alarm_2": {
+    "id": "1742705633515",
+    "alias": "Alarm 2",
+    "description": "",
+    "triggers": [
+      {
+        "trigger": "time",
+        "at": "input_datetime.alarm_2"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "state",
+        "entity_id": "input_boolean.alarm",
+        "state": "on"
+      }
+    ],
+    "actions": [
+      {
+        "action": "media_player.play_media",
+        "target": {
+          "entity_id": "media_player.bedroom_speaker"
+        },
+        "data": {
+          "media": {
+            "media_content_id": "media-source://media_source/local/crazy_chicken_alarm.mp3",
+            "media_content_type": "audio/mpeg",
+            "metadata": {
+              "title": "crazy_chicken_alarm.mp3",
+              "thumbnail": null,
+              "media_class": "music",
+              "children_media_class": null,
+              "navigateIds": [
+                {},
+                {
+                  "media_content_type": "app",
+                  "media_content_id": "media-source://media_source"
+                }
+              ],
+              "browse_entity_id": "media_player.bedroom_speaker"
+            }
+          }
+        }
+      }
+    ],
+    "mode": "single"
   }
 }

@@ -19,11 +19,13 @@ views:
     badges:
       - type: entity
         entity: person.caleb_greene
-        show_name: false
+        name: Caleb
+        show_name: true
         show_state: true
       - type: entity
         entity: person.destiny
-        show_name: false
+        name: Destiny
+        show_name: true
         show_state: true
       - type: entity
         entity: weather.forecast_home
@@ -51,6 +53,7 @@ views:
             icon: mdi:weather-night
             color: indigo
             vertical: true
+            hide_state: true
             tap_action:
               action: perform-action
               perform_action: script.night_time_routine
@@ -236,6 +239,7 @@ views:
             entity: script.netflix
             name: Open Stremio
             icon: mdi:play-box
+            hide_state: true
             tap_action: { action: perform-action, perform_action: script.netflix }
           - type: custom:firemote-card
             entity: remote.bedroom_tv
@@ -288,12 +292,14 @@ views:
             icon: mdi:cctv
             color: red
             vertical: true
+            hide_state: true
             tap_action: { action: perform-action, perform_action: script.turn_on_cameras }
           - type: tile
             entity: script.turn_off_cameras
             name: Cameras off
             icon: mdi:cctv-off
             vertical: true
+            hide_state: true
             tap_action: { action: perform-action, perform_action: script.turn_off_cameras }
 
       - type: grid
