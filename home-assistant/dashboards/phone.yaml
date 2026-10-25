@@ -36,6 +36,14 @@ views:
         name: Outside
         color: orange
       - type: entity
+        entity: sensor.2022_gmc_terrain_2022_gmc_terrain_fuel_range_mi
+        name: Terrain
+        icon: mdi:car
+        show_name: true
+        tap_action:
+          action: navigate
+          navigation_path: /dashboard-phone/car
+      - type: entity
         entity: alarm_control_panel.blink_outdoor_cameras
         show_name: false
         tap_action:
@@ -526,28 +534,180 @@ views:
             content: >-
               {%- set aa = is_state('binary_sensor.caleb_s_phone_android_auto_2', 'on') %}
               {%- set bt = 'myGMC' in (state_attr('sensor.caleb_s_phone_bluetooth_connection_2', 'connected_paired_devices') or []) | join(' ') %}
-              {%- set incar = aa or bt %}
-              {%- set odo = states('sensor.caleb_s_phone_car_odometer_2') %}
               {%- set spd = states('sensor.caleb_s_phone_car_speed_2') %}
-              ## {{ '🚗 Driving' if incar else '🅿️ Parked' }}
-              {%- if incar and spd | is_number %}
+              ## {{ '🚗 Driving' if (aa or bt) else '🅿️ Parked' ~ (' at home' if is_state('device_tracker.2022_gmc_terrain', 'home') else '') }}
+              {%- if (aa or bt) and spd | is_number %}
 
               **{{ spd | float | round(0) | int }} mph**
               {%- endif %}
 
-              Odometer: **{{ '{:,}'.format((odo | float / 5280) | round(0) | int) ~ ' mi' if odo | is_number else 'open Home Assistant on Android Auto to update' }}**
+              {{ '{:,}'.format(states('sensor.2022_gmc_terrain_2022_gmc_terrain_odo_read_mi') | float(0) | round(0) | int) }} mi · {{ states('sensor.2022_gmc_terrain_2022_gmc_terrain_average_fuel_economy_mpg') }} mpg average · updated {{ relative_time(as_datetime(states('sensor.2022_gmc_terrain_command_status_monitor_sensors_2022_gmc_terrain_command_status_monitor_sensors_polling_status_timestamp'))) }} ago
+          - type: tile
+            entity: sensor.2022_gmc_terrain_2022_gmc_terrain_fuel_level
+            name: Fuel
+            icon: mdi:gas-station
+            grid_options: { columns: 6 }
+          - type: tile
+            entity: sensor.2022_gmc_terrain_2022_gmc_terrain_fuel_range_mi
+            name: Range
+            icon: mdi:map-marker-distance
+            grid_options: { columns: 6 }
+          - type: tile
+            entity: sensor.2022_gmc_terrain_2022_gmc_terrain_eol_read
+            name: Oil life
+            icon: mdi:oil
+            grid_options: { columns: 6 }
+          - type: tile
+            entity: sensor.2022_gmc_terrain_2022_gmc_terrain_trip_a_odo_mi
+            name: Trip A
+            icon: mdi:counter
+            grid_options: { columns: 6 }
 
-              {{ 'Connected via ' ~ ('Android Auto' if aa else 'Bluetooth') if incar else 'Phone not connected to the Terrain' }} · phone {{ states('sensor.caleb_s_phone_battery_level_2') }}%
+      - type: grid
+        cards:
+          - type: heading
+            heading: Controls
+            icon: mdi:car-key
+          - type: button
+            name: Lock
+            icon: mdi:car-door-lock
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target: { entity_id: button.2022_gmc_terrain_2022_gmc_terrain_command_lockdoor }
+              confirmation:
+                text: Lock the Terrain?
+            grid_options: { columns: 3, rows: 2 }
+          - type: button
+            name: Unlock
+            icon: mdi:car-door
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target: { entity_id: button.2022_gmc_terrain_2022_gmc_terrain_command_unlockdoor }
+              confirmation:
+                text: Unlock the Terrain?
+            grid_options: { columns: 3, rows: 2 }
+          - type: button
+            name: Start
+            icon: mdi:car-key
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target: { entity_id: button.2022_gmc_terrain_2022_gmc_terrain_command_start }
+              confirmation:
+                text: Remote start the Terrain?
+            grid_options: { columns: 3, rows: 2 }
+          - type: button
+            name: Stop
+            icon: mdi:engine-off
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target: { entity_id: button.2022_gmc_terrain_2022_gmc_terrain_command_cancelstart }
+              confirmation:
+                text: Stop the remote start?
+            grid_options: { columns: 3, rows: 2 }
+          - type: button
+            name: Flash
+            icon: mdi:car-light-high
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target: { entity_id: button.2022_gmc_terrain_2022_gmc_terrain_command_flashlights }
+            grid_options: { columns: 3, rows: 2 }
+          - type: button
+            name: Honk
+            icon: mdi:bullhorn
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target: { entity_id: button.2022_gmc_terrain_2022_gmc_terrain_command_alerthonk }
+              confirmation:
+                text: Honk the horn and flash the lights?
+            grid_options: { columns: 3, rows: 2 }
+          - type: button
+            name: Stop alert
+            icon: mdi:volume-off
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target: { entity_id: button.2022_gmc_terrain_2022_gmc_terrain_command_cancelalert }
+            grid_options: { columns: 3, rows: 2 }
+          - type: button
+            name: Locate
+            icon: mdi:crosshairs-gps
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target: { entity_id: button.2022_gmc_terrain_2022_gmc_terrain_command_getlocation }
+            grid_options: { columns: 3, rows: 2 }
+          - type: markdown
+            content: >-
+              Commands go through OnStar and take 30–60 seconds to reach the car.
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Tires
+            icon: mdi:car-tire-alert
           - type: tile
-            entity: binary_sensor.caleb_s_phone_android_auto_2
-            name: Android Auto
-            icon: mdi:car-connected
+            entity: sensor.2022_gmc_terrain_2022_gmc_terrain_left_front_tire_pressure_psi
+            name: Front left
+            icon: mdi:tire
             grid_options: { columns: 6 }
           - type: tile
-            entity: sensor.caleb_s_phone_car_speed_2
-            name: Speed
-            icon: mdi:speedometer
+            entity: sensor.2022_gmc_terrain_2022_gmc_terrain_right_front_tire_pressure_psi
+            name: Front right
+            icon: mdi:tire
             grid_options: { columns: 6 }
+          - type: tile
+            entity: sensor.2022_gmc_terrain_2022_gmc_terrain_left_rear_tire_pressure_psi
+            name: Rear left
+            icon: mdi:tire
+            grid_options: { columns: 6 }
+          - type: tile
+            entity: sensor.2022_gmc_terrain_2022_gmc_terrain_right_rear_tire_pressure_psi
+            name: Rear right
+            icon: mdi:tire
+            grid_options: { columns: 6 }
+          - type: markdown
+            content: >-
+              Recommended: **{{ states('sensor.2022_gmc_terrain_2022_gmc_terrain_front_placard_psi') }} psi** front ·
+              **{{ states('sensor.2022_gmc_terrain_2022_gmc_terrain_rear_placard_psi') }} psi** rear
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Health
+            icon: mdi:car-wrench
+          - type: markdown
+            content: >-
+              {%- set items = [
+                ('Oil life', states('sensor.2022_gmc_terrain_2022_gmc_terrain_eol_read') | float(0) | round(0) | int ~ '%', states('sensor.2022_gmc_terrain_2022_gmc_terrain_engine_oil_life_status_color')),
+                ('Air filter', states('sensor.2022_gmc_terrain_2022_gmc_terrain_engine_air_filter_life_rmaining_hmi') ~ '%', states('sensor.2022_gmc_terrain_2022_gmc_terrain_engine_air_filter_status_color')),
+                ('Battery', states('sensor.2022_gmc_terrain_2022_gmc_terrain_battery_state_of_charge_critically_low_status'), states('sensor.2022_gmc_terrain_2022_gmc_terrain_battery_state_of_charge_critically_low_status_color')),
+                ('Brake fluid', states('sensor.2022_gmc_terrain_2022_gmc_terrain_brake_fluid_low_status'), states('sensor.2022_gmc_terrain_2022_gmc_terrain_brake_fluid_low_status_color')),
+                ('Washer fluid', states('sensor.2022_gmc_terrain_2022_gmc_terrain_washer_fluid_low_status'), states('sensor.2022_gmc_terrain_2022_gmc_terrain_washer_fluid_low_status_color')),
+                ('Tires', states('sensor.2022_gmc_terrain_2022_gmc_terrain_tire_pressure_status'), states('sensor.2022_gmc_terrain_2022_gmc_terrain_tire_pressure_status_color')),
+              ] %}
+              {%- set dot = {'GREEN': '🟢', 'YELLOW': '🟡', 'RED': '🔴'} %}
+              {%- for name, val, col in items %}
+
+              {{ dot.get(col, '⚪') }} **{{ name }}:** {{ val | title }}
+              {%- endfor %}
+
+              {{ '🟢' if states('sensor.2022_gmc_terrain_2022_gmc_terrain_vehicle_recalls') | int(0) == 0 else '🔴' }} **Recalls:** {{ states('sensor.2022_gmc_terrain_2022_gmc_terrain_vehicle_recalls') }}
+
+              Airbags, ABS, engine, emissions, StabiliTrak: {{ 'all OK' if [states('sensor.2022_gmc_terrain_2022_gmc_terrain_air_bag_system'), states('sensor.2022_gmc_terrain_2022_gmc_terrain_antilock_braking_system'), states('sensor.2022_gmc_terrain_2022_gmc_terrain_engine_and_transmission_system'), states('sensor.2022_gmc_terrain_2022_gmc_terrain_emissions_system'), states('sensor.2022_gmc_terrain_2022_gmc_terrain_stabilitrak_r_stability_control_system')] | select('ne', 'NO_ACTION_REQUIRED') | list | length == 0 else '⚠️ check the OnStar app' }}
 
       - type: grid
         cards:
@@ -556,16 +716,13 @@ views:
             icon: mdi:map-marker
           - type: map
             entities:
+              - entity: device_tracker.2022_gmc_terrain
+                name: Terrain
               - entity: device_tracker.caleb_s_phone_2
                 name: Caleb
             hours_to_show: 24
-            default_zoom: 14
+            default_zoom: 15
             grid_options: { columns: 12, rows: 6 }
-          - type: markdown
-            content: >-
-              Location comes from Caleb’s phone, so it shows where the
-              Terrain is while you’re driving it. Fuel, tire pressure,
-              lock and remote start arrive once OnStar is connected.
 
   - title: Living Room Remote
     path: living-room-remote
