@@ -92,3 +92,4 @@ Changed: Everyone left home now also turns on all camera motion detection · Nig
 Not built: lock-state check (OnStar doesn't report locks) and store-zone shopping nudge (no store zone yet).
 - **Shopping list at the store** — when Caleb or Destiny's tracker enters a zone named Costco / Meijer / Walmart and the shopping list has items, send them the list. Zones to be created in the UI (Settings → Areas, labels & zones → Zones).
 - Shopping list at the store now requires 3 minutes in the zone (Walmart is ~0.6 mi from home, so drive-bys shouldn't trigger it). Store coordinates (from Google Plus Codes): Costco 40.88594, -81.43919 · Meijer 40.84681, -81.44269 · Walmart 40.79431, -81.42231.
+- Store zones created by Caleb (zone.costco / zone.meijer / zone.walmart, passive). Because passive zones don't change the tracker's state, the shopping-list automation now triggers on the tracker's `in_zones` attribute containing a store zone for 3 minutes.
