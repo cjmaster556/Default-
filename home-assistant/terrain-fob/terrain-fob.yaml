@@ -1,0 +1,106 @@
+# ESPHome config for the Terrain key-fob bridge. See README.md for wiring and safety.
+esphome:
+  name: terrain-fob
+  friendly_name: Terrain Fob
+
+esp32:
+  board: esp32dev
+
+logger:
+
+api:
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+output:
+  # High-side switch for fob power. Fob stays unpowered except during a command.
+  - platform: gpio
+    pin: GPIO25
+    id: fob_power
+  - platform: gpio
+    pin: GPIO26
+    id: btn_lock
+  - platform: gpio
+    pin: GPIO27
+    id: btn_unlock
+  - platform: gpio
+    pin: GPIO14
+    id: btn_start
+
+script:
+  - id: fob_lock
+    mode: single
+    then:
+      - output.turn_on: fob_power
+      - delay: 300ms
+      - output.turn_on: btn_lock
+      - delay: 400ms
+      - output.turn_off: btn_lock
+      - delay: 500ms
+      - output.turn_off: fob_power
+
+  - id: fob_unlock
+    mode: single
+    then:
+      - output.turn_on: fob_power
+      - delay: 300ms
+      - output.turn_on: btn_unlock
+      - delay: 400ms
+      - output.turn_off: btn_unlock
+      - delay: 500ms
+      - output.turn_off: fob_power
+
+  # GM remote start: tap Lock, then hold Remote start.
+  - id: fob_remote_start
+    mode: single
+    then:
+      - output.turn_on: fob_power
+      - delay: 300ms
+      - output.turn_on: btn_lock
+      - delay: 400ms
+      - output.turn_off: btn_lock
+      - delay: 1s
+      - output.turn_on: btn_start
+      - delay: 4s
+      - output.turn_off: btn_start
+      - delay: 500ms
+      - output.turn_off: fob_power
+
+  # Cancel remote start: hold Remote start again.
+  - id: fob_cancel_start
+    mode: single
+    then:
+      - output.turn_on: fob_power
+      - delay: 300ms
+      - output.turn_on: btn_start
+      - delay: 4s
+      - output.turn_off: btn_start
+      - delay: 500ms
+      - output.turn_off: fob_power
+
+button:
+  - platform: template
+    name: Lock
+    icon: mdi:car-door-lock
+    on_press:
+      - script.execute: fob_lock
+  - platform: template
+    name: Unlock
+    icon: mdi:car-door
+    on_press:
+      - script.execute: fob_unlock
+  - platform: template
+    name: Remote start
+    icon: mdi:car-key
+    on_press:
+      - script.execute: fob_remote_start
+  - platform: template
+    name: Cancel start
+    icon: mdi:engine-off
+    on_press:
+      - script.execute: fob_cancel_start
