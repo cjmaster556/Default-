@@ -104,3 +104,10 @@ Not built: lock-state check (OnStar doesn't report locks) and store-zone shoppin
 - **Step 2 (user):** set up Tailscale for remote access and test from the phone on mobile data. Not done yet.
 - **Step 3 (user):** local/Google Drive backups. Not done yet.
 - Do **not** cancel Nabu Casa until Tailscale remote access is tested (it also carries the Companion app away from home, the Google Assistant link and Claude's access).
+
+### Nabu Casa removal: progress (2026-10-25, later)
+- Step 1 done: free Google Translate TTS in 4 automations.
+- Step 2 done: Tailscale app on HA (100.120.200.74, key expiry disabled); phone Companion app uses `http://100.120.200.74:8123` externally and `http://192.168.68.75:8123` on "Greene Family" Wi-Fi. Tested over 5G+ with VPN on.
+- Step 3 done: Google Drive Backup add-on authenticated; encryption key saved by user.
+- Step 4 done: Matter Hub (RiDDiX fork, hamh 2.0.59) bridge "Home", include-only filter for 9 lights, paired to Google Home; lights verified.
+- Still to do before cancelling: wife's iPhone needs Tailscale (second `mobile_app` entry), unlink Home Assistant Cloud in Google Home, switch backup location off Cloud, then sign out of Home Assistant Cloud / cancel.
