@@ -189,9 +189,6 @@ views:
             entity: switch.fan
             name: Fan
             icon: mdi:fan
-          - type: tile
-            entity: light.fan_room
-            name: Fan Room
 
       - type: grid
         cards:
