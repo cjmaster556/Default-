@@ -1,0 +1,441 @@
+{
+  "leaving_home": {
+    "id": "1738439597194",
+    "alias": "Leaving Home",
+    "description": "",
+    "triggers": [
+      {
+        "trigger": "zone",
+        "entity_id": "device_tracker.caleb_s_phone",
+        "zone": "zone.home",
+        "event": "leave"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "device",
+        "device_id": "682829944fbf619f3892c95567ea2953",
+        "domain": "device_tracker",
+        "entity_id": "de5de0ea0cf6e7529c4ee6fb4133b385",
+        "type": "is_not_home"
+      }
+    ],
+    "actions": [
+      {
+        "action": "scene.turn_on",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "entity_id": "scene.coming_home"
+        }
+      },
+      {
+        "action": "google_assistant_sdk.send_text_command",
+        "metadata": {},
+        "data": {
+          "command": "Turn off everything"
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "leaving_home_destiny": {
+    "id": "1738446328863",
+    "alias": "Leaving Home Destiny",
+    "description": "",
+    "triggers": [
+      {
+        "trigger": "zone",
+        "entity_id": "device_tracker.iphone",
+        "zone": "zone.home",
+        "event": "leave"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "device",
+        "device_id": "66e3aba67ea2b44168848f7e6e5902ad",
+        "domain": "device_tracker",
+        "entity_id": "ef5285c6db903c8270b16c286658d841",
+        "type": "is_not_home"
+      }
+    ],
+    "actions": [
+      {
+        "action": "scene.turn_on",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "entity_id": "scene.coming_home"
+        }
+      },
+      {
+        "action": "google_assistant_sdk.send_text_command",
+        "metadata": {},
+        "data": {
+          "command": "Turn off everything"
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "basement_lights": {
+    "id": "1738533978980",
+    "alias": "Basement Lights",
+    "description": "",
+    "triggers": [
+      {
+        "type": "occupied",
+        "device_id": "f3f5ad6199132b4b0297e43d866d3c83",
+        "entity_id": "3eafd2cde64e382f1b553c24bfade6e7",
+        "domain": "binary_sensor",
+        "trigger": "device"
+      }
+    ],
+    "conditions": [],
+    "actions": [
+      {
+        "action": "light.turn_on",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "entity_id": [
+            "light.basement_1",
+            "light.basement"
+          ]
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "basement_lights_3": {
+    "id": "1738534998716",
+    "alias": "Basement Lights off",
+    "description": "",
+    "triggers": [
+      {
+        "type": "not_occupied",
+        "device_id": "f3f5ad6199132b4b0297e43d866d3c83",
+        "entity_id": "3eafd2cde64e382f1b553c24bfade6e7",
+        "domain": "binary_sensor",
+        "trigger": "device",
+        "for": {
+          "hours": 0,
+          "minutes": 5,
+          "seconds": 0
+        }
+      }
+    ],
+    "conditions": [],
+    "actions": [
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "area_id": "basement",
+          "device_id": [
+            "a26a7baf73fa9bf201a8be5ad5d2e932",
+            "6c2f1517a65f8c793fd45cccbde5ba2e"
+          ],
+          "entity_id": [
+            "light.basement_1",
+            "light.basement_3_2",
+            "light.basement_4"
+          ]
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "night_time": {
+    "id": "1738707990392",
+    "alias": "Night time",
+    "description": "",
+    "triggers": [
+      {
+        "type": "motion",
+        "device_id": "b8996cfe68267b28ea853dd6e8a3abcf",
+        "entity_id": "9192cd3e414c382dee8172a5e5098ab6",
+        "domain": "binary_sensor",
+        "trigger": "device"
+      },
+      {
+        "trigger": "state",
+        "entity_id": [
+          "input_button.night_time_button"
+        ]
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "time",
+        "after": "22:30:00",
+        "before": "02:00:00",
+        "weekday": [
+          "sun",
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri",
+          "sat"
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "area_id": "kitchen"
+        }
+      },
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "area_id": "dining_room"
+        }
+      },
+      {
+        "action": "media_player.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "entity_id": [
+            "media_player.living_room_tv",
+            "media_player.onn_7833x_e59d"
+          ]
+        }
+      },
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "area_id": "living_room"
+        }
+      },
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "area_id": "basement"
+        }
+      },
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "device_id": "5296c15e498e099e31dc4f8ca4f3e5bb"
+        }
+      },
+      {
+        "choose": [
+          {
+            "conditions": [
+              {
+                "condition": "time",
+                "before": "00:00:00",
+                "weekday": [
+                  "sun",
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu",
+                  "fri",
+                  "sat"
+                ],
+                "after": "11:30:00"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "light.turn_on",
+                "metadata": {},
+                "data": {},
+                "target": {
+                  "device_id": "8d6fbdde4486a2e15987ca43bdb7dfd7"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "choose": [
+          {
+            "conditions": [
+              {
+                "condition": "state",
+                "entity_id": "media_player.bedroom_tv_2",
+                "state": "off"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "remote.turn_on",
+                "metadata": {},
+                "data": {
+                  "activity": "com.stremio.one"
+                },
+                "target": {
+                  "device_id": "47771609483f4e9a0cbef0a6db14ebb0"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "action": "media_player.volume_set",
+        "metadata": {},
+        "data": {
+          "volume_level": 0.75
+        },
+        "target": {
+          "device_id": "86349caf2f1bb2c88c436da6e38f7dc0"
+        }
+      },
+      {
+        "type": "turn_on",
+        "device_id": "61ece7ee28bcda1a79ec0b1221ccf732",
+        "entity_id": "8d8df57153afa2b22177ee4ffb42c560",
+        "domain": "switch"
+      },
+      {
+        "action": "media_player.play_media",
+        "target": {
+          "entity_id": "media_player.living_room_speaker"
+        },
+        "data": {
+          "media": {
+            "media_content_id": "media-source://tts/tts.home_assistant_cloud?message=Night+routine+started&language=en-US&voice=ChristopherNeural",
+            "media_content_type": "provider",
+            "metadata": {
+              "title": "Night routine started",
+              "thumbnail": "https://brands.home-assistant.io/_/tts/logo.png",
+              "media_class": "app",
+              "children_media_class": null,
+              "navigateIds": [
+                {},
+                {
+                  "media_content_type": "app",
+                  "media_content_id": "media-source://tts"
+                },
+                {
+                  "media_content_type": "provider",
+                  "media_content_id": "media-source://tts/tts.home_assistant_cloud?message=Night+routine+started&language=en-US&voice=ChristopherNeural"
+                }
+              ]
+            }
+          }
+        },
+        "enabled": true
+      },
+      {
+        "if": [
+          {
+            "condition": "time",
+            "after": "11:30:00",
+            "before": "06:00:00",
+            "weekday": [
+              "sun",
+              "mon",
+              "tue",
+              "wed",
+              "thu",
+              "fri",
+              "sat"
+            ]
+          }
+        ],
+        "then": [
+          {
+            "action": "script.turn_on_cameras",
+            "metadata": {},
+            "data": {}
+          }
+        ]
+      }
+    ],
+    "mode": "single"
+  },
+  "morning_time": {
+    "id": "1738760324205",
+    "alias": "Morning Time",
+    "description": "",
+    "triggers": [
+      {
+        "type": "motion",
+        "device_id": "b8996cfe68267b28ea853dd6e8a3abcf",
+        "entity_id": "9192cd3e414c382dee8172a5e5098ab6",
+        "domain": "binary_sensor",
+        "trigger": "device"
+      },
+      {
+        "trigger": "state",
+        "entity_id": [
+          "input_button.morning_time_button"
+        ]
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "or",
+        "conditions": [
+          {
+            "condition": "time",
+            "after": "07:00:00",
+            "before": "09:00:00",
+            "weekday": [
+              "sun",
+              "mon",
+              "tue",
+              "wed",
+              "thu",
+              "fri",
+              "sat"
+            ]
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "action": "light.turn_on",
+        "metadata": {},
+        "data": {
+          "brightness_pct": 100
+        },
+        "target": {
+          "area_id": [
+            "living_room",
+            "dining_room"
+          ],
+          "entity_id": [
+            "light.kitchen_1",
+            "light.kitchen_2",
+            "light.kitchen_3",
+            "light.kitchen_5",
+            "light.kitchen_6",
+            "light.kitchen_8",
+            "light.kitchen_9"
+          ],
+          "device_id": "d8cdaf4a232a50969551d58fa94741c1"
+        }
+      },
+      {
+        "action": "script.turn_off_cameras",
+        "metadata": {},
+        "data": {}
+      }
+    ],
+    "mode": "single"
+  }
+}
