@@ -32,10 +32,6 @@ views:
         show_name: false
         state_content: [state, temperature]
       - type: entity
-        entity: sensor.blink_porch_temperature
-        name: Outside
-        color: orange
-      - type: entity
         entity: sensor.2022_gmc_terrain_2022_gmc_terrain_fuel_range_mi
         name: Terrain
         icon: mdi:car
