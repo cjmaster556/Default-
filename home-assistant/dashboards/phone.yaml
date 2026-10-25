@@ -157,20 +157,6 @@ views:
       - type: grid
         cards:
           - type: heading
-            heading: Lamp Room
-            icon: mdi:floor-lamp
-          # The Lamp is its own light, not part of a "living room" group
-          - type: tile
-            entity: light.living_room_lamp
-            name: Lamp
-            icon: mdi:floor-lamp
-            features: [{ type: light-brightness }]
-            features_position: bottom
-            grid_options: { columns: 12 }
-
-      - type: grid
-        cards:
-          - type: heading
             heading: Kitchen & Dining
             icon: mdi:silverware-fork-knife
           - type: tile
@@ -180,7 +166,7 @@ views:
             features_position: bottom
           - type: tile
             entity: light.kitchen_4
-            name: Kitchen (Cync)
+            name: Kitchen (extra bulb)
           - type: tile
             entity: light.dining_room
             name: Dining
@@ -203,11 +189,11 @@ views:
             name: Light 2
           - type: tile
             entity: switch.fan
-            name: Fan
+            name: Ceiling fan
             icon: mdi:fan
           - type: tile
             entity: light.fan_room
-            name: Fan Room
+            name: Fan light
 
       - type: grid
         cards:
@@ -224,8 +210,12 @@ views:
             entity: light.hallway_light
             name: Hallway
           - type: tile
+            entity: light.living_room_lamp
+            name: Lamp
+            icon: mdi:floor-lamp
+          - type: tile
             entity: switch.merkury_ww118_smart_plug_socket_1
-            name: Plug
+            name: AC plug
 
   # ─────────────────────────────── TV ─────────────────────────────────
   - title: TV
