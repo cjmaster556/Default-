@@ -256,6 +256,7 @@ views:
             device_type: chromecast-4k
             compatibility_mode: default
             scale: 100
+            grid_options: { columns: 12 }
             visibility:
               - { condition: state, entity: remote.living_room_tv, state_not: unavailable }
           - type: button
@@ -369,6 +370,7 @@ views:
             device_type: chromecast-4k
             compatibility_mode: default
             scale: 100
+            grid_options: { columns: 12 }
             visibility:
               - { condition: state, entity: remote.bedroom_tv, state_not: unavailable }
           - type: button
