@@ -62,3 +62,10 @@ Status at audit time: 4 on, 5 off (disabled), 2 `unavailable` (broken config).
 
 ## Suggested order
 R2 → R1 → R6 → R3 → R4 → #4/#5 (merged "Everyone left") → #7 (alarm fallback) → #1–3 → #8–10 → hygiene.
+
+## Applied 2026-10-25 (backup: `backups/automations-before-2026-10-25.json`)
+- **#4/#5** — `automation.leaving_home` rewritten as **Everyone left home**: triggers when `device_tracker.caleb_s_phone_2` (current Samsung) or `device_tracker.iphone` is `not_home` for 2 min; requires both to be `not_home` (fails safe while Caleb's location is `unknown`). Dead `scene.coming_home` step removed. `automation.leaving_home_destiny` turned **off** (kept for rollback).
+- **#8 Night time** — enabled. Button bypasses the 22:30–02:00 window; onn player removed; weekday lists removed; fan via `switch.fan`; bedroom light now only between **23:30 and midnight**; cameras always turn on (unchanged effective behaviour).
+- **#9 Morning Time** — enabled. Button bypasses the 07:00–09:00 window; kitchen bulbs → `light.kitchen` group.
+- **Basement** — left as is until the sensor is fixed.
+- Note for R1: Caleb's live phone is `caleb_s_phone_2` (SM-S948U); `caleb_s_phone` (SM-S928U) is an old registration to delete.
