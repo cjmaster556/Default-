@@ -197,6 +197,10 @@ views:
             entity: switch.fan
             name: Fan
             icon: mdi:fan
+          - type: tile
+            entity: switch.merkury_ww118_smart_plug_socket_1
+            name: AC
+            icon: mdi:air-conditioner
 
       - type: grid
         cards:
@@ -212,9 +216,6 @@ views:
           - type: tile
             entity: light.hallway_light
             name: Hallway
-          - type: tile
-            entity: switch.merkury_ww118_smart_plug_socket_1
-            name: AC plug
 
   # ─────────────────────────────── TV ─────────────────────────────────
   - title: TV
