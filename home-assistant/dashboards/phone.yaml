@@ -573,6 +573,6 @@ views:
             visibility:
               - { condition: state, entity: input_boolean.alarm, state: "on" }
               - { condition: state, entity: media_player.bedroom_speaker, state: unavailable }
-            content: >-
+            content: >2-
               ⚠️ Bedroom speaker is offline —
               the alarm will ring Caleb’s phone instead.
