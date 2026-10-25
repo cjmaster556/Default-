@@ -2228,5 +2228,82 @@
       }
     ],
     "mode": "queued"
+  },
+  "1792949709812@pre-bt-gmc": {
+    "id": "1792949709812",
+    "alias": "Terrain fuel reminder",
+    "description": "When Caleb gets in the Terrain with under 75 mi of range, speak a reminder through the phone (plays over Android Auto).",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "binary_sensor.caleb_s_phone_android_auto_2",
+        "to": "on",
+        "for": {
+          "seconds": 20
+        }
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "numeric_state",
+        "entity_id": "sensor.2022_gmc_terrain_2022_gmc_terrain_fuel_range_mi",
+        "below": 75
+      }
+    ],
+    "actions": [
+      {
+        "action": "notify.mobile_app_caleb_s_phone",
+        "data": {
+          "message": "TTS",
+          "data": {
+            "tts_text": "Heads up, you've got about {{ states('sensor.2022_gmc_terrain_2022_gmc_terrain_fuel_range_mi') | float(0) | round(0) | int }} miles of gas left.",
+            "media_stream": "music_stream"
+          }
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "1792949709810@pre-bt-gmc": {
+    "id": "1792949709810",
+    "alias": "Terrain lock reminder",
+    "description": "10 minutes after Caleb gets out of the Terrain at home, send a notification with a Lock button (OnStar doesn't report lock state).",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "binary_sensor.caleb_s_phone_android_auto_2",
+        "from": "on",
+        "to": "off",
+        "for": {
+          "minutes": 10
+        }
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "state",
+        "entity_id": "device_tracker.caleb_s_phone_2",
+        "state": "home"
+      }
+    ],
+    "actions": [
+      {
+        "action": "notify.mobile_app_caleb_s_phone",
+        "data": {
+          "title": "🚗 Terrain",
+          "message": "Parked at home. Tap Lock if you didn't lock it.",
+          "data": {
+            "tag": "terrain_lock",
+            "actions": [
+              {
+                "action": "LOCK_TERRAIN",
+                "title": "Lock"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "mode": "single"
   }
 }
