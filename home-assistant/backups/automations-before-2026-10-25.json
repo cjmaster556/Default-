@@ -532,5 +532,254 @@
       }
     ],
     "mode": "single"
+  },
+  "coming_home": {
+    "id": "1738428018879",
+    "alias": "Coming Home",
+    "description": "",
+    "triggers": [
+      {
+        "trigger": "zone",
+        "entity_id": "device_tracker.caleb_s_phone",
+        "zone": "zone.home",
+        "event": "enter"
+      }
+    ],
+    "conditions": [],
+    "actions": [
+      {
+        "action": "camera.disable_motion_detection",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "device_id": [
+            "2706df280832bf73704e08ddaa1b50a9",
+            "045c440e37cd30808bc45bb7532b4377",
+            "a13420b1c49a5490351c2d9868f5ea02",
+            "0cbb20d0eea90b5d13c8c815d0011e70"
+          ]
+        }
+      },
+      {
+        "action": "google_assistant_sdk.send_text_command",
+        "metadata": {},
+        "data": {
+          "command": "Broadcast Caleb is home"
+        }
+      },
+      {
+        "action": "light.turn_on",
+        "metadata": {},
+        "target": {
+          "entity_id": "light.lamp_room"
+        },
+        "data": {}
+      }
+    ],
+    "mode": "single"
+  },
+  "wife_is_home": {
+    "id": "1738430936616",
+    "alias": "Wife is home",
+    "description": "",
+    "triggers": [
+      {
+        "device_id": "682829944fbf619f3892c95567ea2953",
+        "domain": "device_tracker",
+        "entity_id": "de5de0ea0cf6e7529c4ee6fb4133b385",
+        "type": "enters",
+        "trigger": "device",
+        "zone": "zone.home"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "zone",
+        "entity_id": "device_tracker.caleb_s_phone",
+        "zone": "zone.home"
+      }
+    ],
+    "actions": [
+      {
+        "action": "media_player.play_media",
+        "target": {
+          "entity_id": "media_player.living_room_speaker"
+        },
+        "data": {
+          "media_content_id": "media-source://tts/tts.home_assistant_cloud?message=I%27m+Home+babe&language=en-US&voice=ChristopherNeural",
+          "media_content_type": "provider"
+        },
+        "metadata": {
+          "title": "I'm Home babe",
+          "thumbnail": "https://brands.home-assistant.io/_/tts/logo.png",
+          "media_class": "app",
+          "children_media_class": null,
+          "navigateIds": [
+            {},
+            {
+              "media_content_type": "app",
+              "media_content_id": "media-source://tts"
+            },
+            {
+              "media_content_type": "provider",
+              "media_content_id": "media-source://tts/tts.home_assistant_cloud?message=I%27m+Home+babe&language=en-US&voice=ChristopherNeural"
+            }
+          ]
+        }
+      },
+      {
+        "action": "media_player.media_pause",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "device_id": "df86089cbec97b896bef9955608bb416"
+        }
+      },
+      {
+        "action": "light.turn_off",
+        "metadata": {},
+        "data": {},
+        "target": {
+          "area_id": "living_room"
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "toggle_living_room_lights": {
+    "id": "1775954497442",
+    "alias": "Toggle Living Room Lights",
+    "description": "Toggles all Living Room lights on/off when the dashboard button is pressed",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "input_button.living_room_lights_toggle"
+      }
+    ],
+    "conditions": [],
+    "actions": [
+      {
+        "action": "light.toggle",
+        "target": {
+          "entity_id": [
+            "light.living_room_1",
+            "light.living_room_2",
+            "light.living_room_3"
+          ]
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "script.living_room_lights": {
+    "sequence": [
+      {
+        "action": "light.toggle",
+        "metadata": {},
+        "data": {
+          "kelvin": 6500,
+          "brightness_pct": 100
+        },
+        "target": {
+          "device_id": "08858152122e0dbd63c5dda46dae3e72"
+        }
+      },
+      {
+        "action": "light.toggle",
+        "metadata": {},
+        "data": {
+          "kelvin": 6500,
+          "brightness_pct": 100
+        },
+        "target": {
+          "device_id": "e0a8755c62a54a2cdcc9bd94412c1396"
+        }
+      },
+      {
+        "action": "light.toggle",
+        "metadata": {},
+        "data": {
+          "kelvin": 6500,
+          "brightness_pct": 100
+        },
+        "target": {
+          "device_id": "282eee39b2b531c0a3ea1ebca458d4e3"
+        }
+      }
+    ],
+    "alias": "Living room lights",
+    "description": ""
+  },
+  "script.turn_on_cameras": {
+    "sequence": [
+      {
+        "type": "turn_on",
+        "device_id": "2706df280832bf73704e08ddaa1b50a9",
+        "entity_id": "13a7578961df1d105344d9fdf3e8b7ac",
+        "domain": "switch"
+      },
+      {
+        "type": "turn_on",
+        "device_id": "a13420b1c49a5490351c2d9868f5ea02",
+        "entity_id": "5cef6253c9435089ddebc9d1d90cc854",
+        "domain": "switch"
+      },
+      {
+        "type": "turn_on",
+        "device_id": "045c440e37cd30808bc45bb7532b4377",
+        "entity_id": "cf4c908482d12010ac44ec082cecbc9f",
+        "domain": "switch"
+      },
+      {
+        "type": "turn_on",
+        "device_id": "0cbb20d0eea90b5d13c8c815d0011e70",
+        "entity_id": "67a91dc9e18f1eaafb2a818d6e148af7",
+        "domain": "switch"
+      },
+      {
+        "type": "turn_on",
+        "device_id": "95748a24dcd1f33042b2a1d5029ab803",
+        "entity_id": "f173e6036def9004d68a31d951bb1b06",
+        "domain": "switch"
+      }
+    ],
+    "alias": "Turn on Cameras",
+    "description": ""
+  },
+  "script.turn_off_cameras": {
+    "sequence": [
+      {
+        "type": "turn_off",
+        "device_id": "2706df280832bf73704e08ddaa1b50a9",
+        "entity_id": "13a7578961df1d105344d9fdf3e8b7ac",
+        "domain": "switch"
+      },
+      {
+        "type": "turn_off",
+        "device_id": "a13420b1c49a5490351c2d9868f5ea02",
+        "entity_id": "5cef6253c9435089ddebc9d1d90cc854",
+        "domain": "switch"
+      },
+      {
+        "type": "turn_off",
+        "device_id": "045c440e37cd30808bc45bb7532b4377",
+        "entity_id": "cf4c908482d12010ac44ec082cecbc9f",
+        "domain": "switch"
+      },
+      {
+        "type": "turn_off",
+        "device_id": "0cbb20d0eea90b5d13c8c815d0011e70",
+        "entity_id": "67a91dc9e18f1eaafb2a818d6e148af7",
+        "domain": "switch"
+      },
+      {
+        "type": "turn_off",
+        "device_id": "95748a24dcd1f33042b2a1d5029ab803",
+        "entity_id": "f173e6036def9004d68a31d951bb1b06",
+        "domain": "switch"
+      }
+    ],
+    "alias": "Turn off Cameras",
+    "description": ""
   }
 }

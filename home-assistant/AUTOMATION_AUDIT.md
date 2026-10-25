@@ -70,3 +70,9 @@ R2 → R1 → R6 → R3 → R4 → #4/#5 (merged "Everyone left") → #7 (alarm 
 - **Basement** — left as is until the sensor is fixed.
 - Note for R1: Caleb's live phone is `caleb_s_phone_2` (SM-S948U); `caleb_s_phone` (SM-S928U) is an old registration to delete.
 - **#7 Alarms** — renamed **Wake alarm 1 / Wake alarm 2**. If `media_player.bedroom_speaker` is unavailable/unknown, rings Caleb's phone instead (`notify.mobile_app_caleb_s_phone`: TTS on `alarm_stream_max` + high-priority notification); otherwise plays on the speaker as before (`continue_on_error`). Both Caleb phone registrations share the name "Caleb's phone", so only one `mobile_app_caleb_s_phone` service exists — delete the old registration so it's guaranteed to target the current phone.
+- **Offline / low-battery alert** (new `automation.device_offline_low_battery_alert`) — notifies Caleb's phone when any Blink camera, the hallway motion sensor or the bedroom speaker is `unavailable` for 30 min, or Caleb's/Destiny's phone battery drops below 15%.
+- **#3 Living Room** — `Toggle Living Room Lights` and `script.living_room_lights` now target `area_id: living_room` (no-op until the 3 Matter bulbs are paired into that area).
+- **#10 Coming Home** — enabled; triggers on `device_tracker.caleb_s_phone_2`; motion-detection-off now runs `script.turn_off_cameras` (same 5 cameras as `turn_on_cameras`, incl. Back Yard).
+- **Camera scripts** — device actions replaced with `switch.turn_on/off` on the 5 motion-detection switches (same cameras; Garage untouched).
+- **Wife is home** — zone trigger on `device_tracker.iphone`; condition uses `device_tracker.caleb_s_phone_2`.
+- R1 resolved: Caleb's Companion app background location enabled; `caleb_s_phone_2` reports `home`.
