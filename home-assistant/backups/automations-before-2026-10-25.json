@@ -2044,5 +2044,77 @@
       }
     ],
     "mode": "single"
+  },
+  "1792949809843@pre-keep-count": {
+    "id": "1792949809843",
+    "alias": "Shopping list at the store",
+    "description": "After 3 minutes inside the Costco, Meijer or Walmart zone, send that person a reminder that opens the shared Google Keep shopping list.",
+    "triggers": [
+      {
+        "trigger": "template",
+        "value_template": "{{ (state_attr('device_tracker.caleb_s_phone_2', 'in_zones') or []) | select('in', ['zone.costco', 'zone.meijer', 'zone.walmart']) | list | length > 0 }}",
+        "for": {
+          "minutes": 3
+        },
+        "id": "caleb"
+      },
+      {
+        "trigger": "template",
+        "value_template": "{{ (state_attr('device_tracker.iphone', 'in_zones') or []) | select('in', ['zone.costco', 'zone.meijer', 'zone.walmart']) | list | length > 0 }}",
+        "for": {
+          "minutes": 3
+        },
+        "id": "destiny"
+      }
+    ],
+    "conditions": [],
+    "actions": [
+      {
+        "choose": [
+          {
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "caleb"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "notify.mobile_app_caleb_s_phone",
+                "data": {
+                  "title": "🛒 At {{ state_attr(((state_attr('device_tracker.caleb_s_phone_2', 'in_zones') or []) | select('in', ['zone.costco', 'zone.meijer', 'zone.walmart']) | list + ['zone.home'])[0], 'friendly_name') }}",
+                  "message": "Tap to open the shopping list in Google Keep.",
+                  "data": {
+                    "tag": "shopping_list",
+                    "clickAction": "app://com.google.android.keep"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "conditions": [
+              {
+                "condition": "trigger",
+                "id": "destiny"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "notify.mobile_app_iphone",
+                "data": {
+                  "title": "🛒 At {{ state_attr(((state_attr('device_tracker.iphone', 'in_zones') or []) | select('in', ['zone.costco', 'zone.meijer', 'zone.walmart']) | list + ['zone.home'])[0], 'friendly_name') }}",
+                  "message": "Tap to open the shopping list in Google Keep.",
+                  "data": {
+                    "url": "https://keep.google.com"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "mode": "parallel"
   }
 }

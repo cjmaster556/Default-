@@ -121,3 +121,4 @@ Not built: lock-state check (OnStar doesn't report locks) and store-zone shoppin
 - Entity `todo.google_keep_shopping_list` ("Keep Shopping list"), 15 min sync. HA → Keep verified (tick in HA ticks in Keep).
 - Phone dashboard Alarm tab Lists card now uses this entity. Category headings in Keep appear as unchecked items.
 - "Shopping list at the store" reminder left unchanged (still opens Keep).
+- "Shopping list at the store" now reads `todo.google_keep_shopping_list` (unchecked items only, category headings that start with an emoji are skipped) and puts the count plus the first 5 items in the notification, e.g. "7 items left: Steak?, Milk, … Tap to open Keep." Backup key `1792949809843@pre-keep-count` in the backups file.
