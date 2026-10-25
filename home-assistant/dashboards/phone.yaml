@@ -553,7 +553,7 @@ views:
             icon: mdi:map-marker-distance
             grid_options: { columns: 6 }
           - type: tile
-            entity: sensor.2022_gmc_terrain_2022_gmc_terrain_eol_read
+            entity: sensor.terrain_oil_life
             name: Oil life
             icon: mdi:oil
             grid_options: { columns: 6 }

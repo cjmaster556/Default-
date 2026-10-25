@@ -84,3 +84,4 @@ R2 → R1 → R6 → R3 → R4 → #4/#5 (merged "Everyone left") → #7 (alarm 
 - **Coming Home** now speaks "Caleb is home" on the Living Room speaker (`tts.speak` → `media_player.nestmini5941`) instead of a house-wide Google broadcast.
 - **Terrain alerts** (new `automation.terrain_alerts`) — phone notification when range < 50 mi, oil life < 15%, or any tire < 30 psi.
 - **Leaving Home Destiny** deleted (replaced by *Everyone left home*; its condition referenced the removed old phone). Backup in `backups/automations-before-2026-10-25.json`.
+- **Template sensor** `sensor.terrain_oil_life` (helper) — OnStar oil life rounded to a whole %, used by the Car tab tile.
