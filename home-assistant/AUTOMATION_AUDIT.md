@@ -85,3 +85,8 @@ R2 → R1 → R6 → R3 → R4 → #4/#5 (merged "Everyone left") → #7 (alarm 
 - **Terrain alerts** (new `automation.terrain_alerts`) — phone notification when range < 50 mi, oil life < 15%, or any tire < 30 psi.
 - **Leaving Home Destiny** deleted (replaced by *Everyone left home*; its condition referenced the removed old phone). Backup in `backups/automations-before-2026-10-25.json`.
 - **Template sensor** `sensor.terrain_oil_life` (helper) — OnStar oil life rounded to a whole %, used by the Car tab tile.
+
+## Added 2026-10-25 (round 2: "everything you can do with your devices")
+New: Arriving home after dark · Terrain lock reminder (+ "Terrain lock from notification" handler) · Terrain fuel reminder (TTS over Android Auto) · Caleb on his way (notifies Destiny, weekdays 4–9 PM, once/day) · First one home (indoor cameras off) · Lights left on while away (15 min) · Sunset living room · Movie mode (dim to 20% / restore via scene snapshot) · Wake-up light (10 min before alarm 1) · Night motion alert (11 PM–6 AM, camera snapshot) · Freeze warning (8 PM, hourly forecast low ≤ 32 °F) · Pause TV for porch motion · Plug auto-off (2 h).
+Changed: Everyone left home now also turns on all camera motion detection · Night time also turns off the Xbox · Morning Time also turns off the fan. Backups saved as `*@pre-ideas` in the backups file.
+Not built: lock-state check (OnStar doesn't report locks) and store-zone shopping nudge (no store zone yet).
