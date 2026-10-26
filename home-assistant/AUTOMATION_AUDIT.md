@@ -140,3 +140,7 @@ Not built: lock-state check (OnStar doesn't report locks) and store-zone shoppin
 - Note: while "Disable allow list requirement" was briefly on, other apps' notifications (e.g. Netflix) were sent to HA and recorded; it is off now.
 - 2026-10-26: `Sunset living room` (id 1792949709816, living room lights on warm 15 min before sunset) turned OFF at the user's request (ambient lights). `Arriving home after dark` (lights on at arrival after sunset) is still on.
 - 2026-10-26: `Arriving home after dark` (id 1792949709809) now turns on only the lamp (`light.living_room_lamp`), no living room ceiling lights or hallway light. Backup `1792949709809@pre-lamp-only`. `Coming Home` already only turns on the lamp (`light.lamp_room`).
+
+### Alarm ringtones (2026-10-26)
+- Four simple alarm tones were synthesized (own work, no licensing) and uploaded to HA local media (`/media`): `alarm_classic_beep.mp3`, `alarm_gentle_chimes.mp3`, `alarm_digital_two_tone.mp3`, `alarm_bell.mp3` (45 s each). Free CC0 sound sites (bigsoundbank, Wikimedia) were not reachable from the sandbox.
+- Wake alarm 1 (`1742535467728`) now plays `alarm_gentle_chimes.mp3`; Wake alarm 2 (`1742705633515`) plays `alarm_digital_two_tone.mp3` on the bedroom speaker (previously `crazy_chicken_alarm.mp3`, still in media). Backups: `*@pre-ringtone`. Not test-played (it was ~12:40 AM).
