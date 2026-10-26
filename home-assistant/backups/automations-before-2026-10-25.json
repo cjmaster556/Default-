@@ -2587,5 +2587,57 @@
         ]
       }
     ]
+  },
+  "1792976042557@proximity-version": {
+    "id": "1792976042557",
+    "alias": "On my way home announcement",
+    "description": "When Google Maps navigation starts while Caleb is away from home and he is heading toward home (proximity 'towards' within 90 s), the living room speaker says he's on his way home with the ETA from the Maps notification. At most once per hour.",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "sensor.caleb_s_phone_last_notification_2"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "template",
+        "value_template": "{{ trigger.to_state is not none and trigger.to_state.attributes.get('package') == 'com.google.android.apps.maps' and trigger.to_state.attributes.get('category') == 'navigation' }}"
+      },
+      {
+        "condition": "not",
+        "conditions": [
+          {
+            "condition": "state",
+            "entity_id": "device_tracker.caleb_s_phone_2",
+            "state": "home"
+          }
+        ]
+      },
+      {
+        "condition": "template",
+        "value_template": "{{ this.attributes.last_triggered is none or (now() - this.attributes.last_triggered).total_seconds() > 3600 }}"
+      }
+    ],
+    "actions": [
+      {
+        "wait_template": "{{ is_state('sensor.home_nearest_direction_of_travel', 'towards') }}",
+        "timeout": {
+          "seconds": 90
+        },
+        "continue_on_timeout": false
+      },
+      {
+        "action": "tts.speak",
+        "target": {
+          "entity_id": "tts.google_translate_en_com"
+        },
+        "data": {
+          "media_player_entity_id": "media_player.nestmini5941",
+          "message": "{% set sub = trigger.to_state.attributes.get('android.subText', '') | string %}{% set f = sub | regex_findall('Arrive (\\\\d{1,2}:\\\\d{2} [AP]M)') %}Caleb is on his way home.{% if f %}{% set t = strptime(f[0], '%I:%M %p') %}{% set mins = ((as_timestamp(today_at('%02d:%02d' | format(t.hour, t.minute))) - now().timestamp()) / 60) | round(0) | int %}{% if 0 < mins < 90 %} About {{ mins }} minutes away.{% endif %}{% endif %}"
+        }
+      }
+    ],
+    "mode": "single",
+    "max_exceeded": "silent"
   }
 }

@@ -136,6 +136,5 @@ Not built: lock-state check (OnStar doesn't report locks) and store-zone shoppin
 
 ### "On my way home" speaker announcement (2026-10-26)
 - Companion app "Last notification" sensor enabled with allow list = Maps only (`sensor.caleb_s_phone_last_notification_2`). The Maps navigation notification carries the next turn as its title and "Arrive h:mm PM" as subText, but NOT the destination, so "navigating home" is inferred instead.
-- New `proximity` helper for zone.home / Caleb's phone (`sensor.home_nearest_direction_of_travel`).
-- Automation `On my way home announcement`: Maps navigation notification + phone away from home + direction of travel "towards" within 90 s -> living room Nest Mini says "Caleb is on his way home. About N minutes away." At most once an hour.
+- Destination detection (v2): `waze_travel_time` helper `sensor.waze_caleb_to_home` (phone -> zone.home, Waze, realtime). Automation `On my way home announcement` fires when the Maps nav notification is fresh, the phone is away, and Maps' "Arrive h:mm" minus now is within 5 min of the Waze drive time home (held 30 s). Living room Nest Mini says "Caleb is on his way home. About N minutes away." and Destiny's iPhone gets a push. Fires once per trip. (v1 used a proximity helper; backup `1792976042557@proximity-version`, helper removed.)
 - Note: while "Disable allow list requirement" was briefly on, other apps' notifications (e.g. Netflix) were sent to HA and recorded; it is off now.
