@@ -2305,5 +2305,87 @@
       }
     ],
     "mode": "single"
+  },
+  "script:start_the_car@pre-wait-fix": {
+    "alias": "Start the car",
+    "description": "Remote starts the Terrain through OnStar, waits for OnStar's answer, then tells Caleb by speaker and phone whether it started. Voice: expose to Google Assistant and use a Google Home routine on \"start the car\".",
+    "mode": "single",
+    "icon": "mdi:car-key",
+    "sequence": [
+      {
+        "variables": {
+          "before": "{{ states('sensor.2022_gmc_terrain_command_status_monitor_sensors_2022_gmc_terrain_command_status_monitor_sensors_command_startvehicle_status_monitor_timestamp') }}"
+        }
+      },
+      {
+        "action": "button.press",
+        "target": {
+          "entity_id": "button.2022_gmc_terrain_2022_gmc_terrain_command_start"
+        }
+      },
+      {
+        "wait_template": "{{ states('sensor.2022_gmc_terrain_command_status_monitor_sensors_2022_gmc_terrain_command_status_monitor_sensors_command_startvehicle_status_monitor_timestamp') != before }}",
+        "timeout": {
+          "minutes": 2
+        },
+        "continue_on_timeout": true
+      },
+      {
+        "choose": [
+          {
+            "conditions": [
+              {
+                "condition": "template",
+                "value_template": "{{ states('sensor.2022_gmc_terrain_command_status_monitor_sensors_2022_gmc_terrain_command_status_monitor_sensors_command_startvehicle_status_monitor_timestamp') != before and is_state('sensor.2022_gmc_terrain_command_status_monitor_sensors_2022_gmc_terrain_command_status_monitor_sensors_command_startvehicle_status_monitor', 'Completed Successfully') }}"
+              }
+            ],
+            "sequence": [
+              {
+                "action": "tts.speak",
+                "target": {
+                  "entity_id": "tts.google_translate_en_com"
+                },
+                "data": {
+                  "media_player_entity_id": "media_player.nestmini5941",
+                  "message": "Your car has started. It will run for about fifteen minutes."
+                }
+              },
+              {
+                "action": "notify.mobile_app_caleb_s_phone",
+                "data": {
+                  "title": "🚗 Terrain started",
+                  "message": "OnStar says the remote start worked. It runs about 15 minutes — make sure the garage door is open.",
+                  "data": {
+                    "tag": "terrain_start"
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "default": [
+          {
+            "action": "tts.speak",
+            "target": {
+              "entity_id": "tts.google_translate_en_com"
+            },
+            "data": {
+              "media_player_entity_id": "media_player.nestmini5941",
+              "message": "Sorry, the car did not start. Check the app."
+            }
+          },
+          {
+            "action": "notify.mobile_app_caleb_s_phone",
+            "data": {
+              "title": "⚠️ Terrain did not start",
+              "message": "OnStar reported: {{ states('sensor.2022_gmc_terrain_command_status_monitor_sensors_2022_gmc_terrain_command_status_monitor_sensors_command_startvehicle_status_monitor') }}. Try again or check the myGMC app.",
+              "data": {
+                "tag": "terrain_start"
+              }
+            }
+          }
+        ]
+      }
+    ]
   }
 }
