@@ -701,6 +701,16 @@ views:
           - type: heading
             heading: Where it is
             icon: mdi:map-marker
+          # OnStar only reports the car's position when asked; the map updates ~15-60 s after pressing
+          - type: button
+            name: Locate Terrain
+            icon: mdi:crosshairs-gps
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target: { entity_id: button.2022_gmc_terrain_2022_gmc_terrain_command_getlocation }
+            grid_options: { columns: 12, rows: 1 }
           - type: map
             entities:
               - entity: device_tracker.2022_gmc_terrain
