@@ -3089,5 +3089,90 @@
       }
     ],
     "mode": "single"
+  },
+  "1793104411191@pre-departure": {
+    "id": "1793104411191",
+    "alias": "Terrain location check-in",
+    "description": "Away from home: ask OnStar for the Terrain's location when it leaves home and every 5 minutes, so the live tracking loop can pick up when it starts moving. No extra requests while it is at home.",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "device_tracker.2022_gmc_terrain",
+        "from": "home"
+      },
+      {
+        "trigger": "time_pattern",
+        "minutes": "/5"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "not",
+        "conditions": [
+          {
+            "condition": "state",
+            "entity_id": "device_tracker.2022_gmc_terrain",
+            "state": "home"
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "action": "button.press",
+        "target": {
+          "entity_id": "button.2022_gmc_terrain_2022_gmc_terrain_command_getlocation"
+        }
+      }
+    ],
+    "mode": "single"
+  },
+  "1793104411190@pre-departure": {
+    "id": "1793104411190",
+    "alias": "Terrain live tracking (moving)",
+    "description": "While the Terrain is away from home and its reported position keeps changing by more than ~15 m, ask OnStar for its location again 30 s after each update (about once every 45 s). Stops by itself when the car stops moving; the 5-minute check-in automation restarts it.",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": "device_tracker.2022_gmc_terrain",
+        "attribute": "latitude"
+      },
+      {
+        "trigger": "state",
+        "entity_id": "device_tracker.2022_gmc_terrain",
+        "attribute": "longitude"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "not",
+        "conditions": [
+          {
+            "condition": "state",
+            "entity_id": "device_tracker.2022_gmc_terrain",
+            "state": "home"
+          }
+        ]
+      },
+      {
+        "condition": "template",
+        "value_template": "{{ trigger.from_state is not none and trigger.from_state.attributes.get('latitude') is not none and ((trigger.to_state.attributes.latitude | float(0) - trigger.from_state.attributes.latitude | float(0)) | abs > 0.00013 or (trigger.to_state.attributes.longitude | float(0) - trigger.from_state.attributes.longitude | float(0)) | abs > 0.00013) }}"
+      }
+    ],
+    "actions": [
+      {
+        "delay": {
+          "seconds": 30
+        }
+      },
+      {
+        "action": "button.press",
+        "target": {
+          "entity_id": "button.2022_gmc_terrain_2022_gmc_terrain_command_getlocation"
+        }
+      }
+    ],
+    "mode": "single",
+    "max_exceeded": "silent"
   }
 }
