@@ -3174,5 +3174,91 @@
     ],
     "mode": "single",
     "max_exceeded": "silent"
+  },
+  "1742705633515@pre-same-chimes": {
+    "id": "1742705633515",
+    "alias": "Wake alarm 2",
+    "description": "Second alarm: plays on the bedroom speaker; if the speaker is offline, rings Caleb's phone on the alarm stream instead.",
+    "triggers": [
+      {
+        "trigger": "time",
+        "at": "input_datetime.alarm_2"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "state",
+        "entity_id": "input_boolean.alarm",
+        "state": "on"
+      }
+    ],
+    "actions": [
+      {
+        "if": [
+          {
+            "condition": "state",
+            "entity_id": "media_player.bedroom_speaker",
+            "state": [
+              "unavailable",
+              "unknown"
+            ]
+          }
+        ],
+        "then": [
+          {
+            "action": "notify.mobile_app_caleb_s_phone",
+            "data": {
+              "message": "TTS",
+              "data": {
+                "tts_text": "Wake up. Your alarm is going off.",
+                "media_stream": "alarm_stream_max"
+              }
+            }
+          },
+          {
+            "action": "notify.mobile_app_caleb_s_phone",
+            "data": {
+              "title": "⏰ Alarm",
+              "message": "Second alarm — bedroom speaker is offline, so it rang here instead.",
+              "data": {
+                "ttl": 0,
+                "priority": "high",
+                "channel": "alarm_stream"
+              }
+            }
+          }
+        ],
+        "else": [
+          {
+            "action": "media_player.play_media",
+            "target": {
+              "entity_id": "media_player.bedroom_speaker"
+            },
+            "data": {
+              "media": {
+                "media_content_id": "media-source://media_source/local/alarm_digital_two_tone.mp3",
+                "media_content_type": "audio/mpeg",
+                "metadata": {
+                  "title": "alarm_digital_two_tone.mp3",
+                  "thumbnail": null,
+                  "media_class": "music",
+                  "children_media_class": null,
+                  "navigateIds": [
+                    {},
+                    {
+                      "media_content_type": "app",
+                      "media_content_id": "media-source://media_source"
+                    }
+                  ],
+                  "browse_entity_id": "media_player.bedroom_speaker"
+                }
+              }
+            },
+            "continue_on_error": true
+          }
+        ]
+      }
+    ],
+    "mode": "single"
   }
 }
