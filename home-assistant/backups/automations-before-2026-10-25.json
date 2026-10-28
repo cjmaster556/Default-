@@ -3332,5 +3332,51 @@
     ],
     "alias": "Turn on Cameras",
     "description": ""
+  },
+  "1792938227068@pre-12h": {
+    "id": "1792938227068",
+    "alias": "Cync watchdog",
+    "description": "Every 30 min between 08:00 and 23:00 while someone is home: if no Cync light has updated in 6 hours, the cloud connection has probably dropped (e.g. after a network change). Reloads the Cync integration and tells Caleb.",
+    "triggers": [
+      {
+        "trigger": "time_pattern",
+        "minutes": "/30"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "time",
+        "after": "08:00:00",
+        "before": "23:00:00"
+      },
+      {
+        "condition": "numeric_state",
+        "entity_id": "zone.home",
+        "above": 0
+      },
+      {
+        "condition": "template",
+        "value_template": "{% set last = expand(integration_entities('cync_lights')) | map(attribute='last_updated') | max %}{{ (now() - last).total_seconds() > 6 * 3600 }}"
+      }
+    ],
+    "actions": [
+      {
+        "action": "homeassistant.reload_config_entry",
+        "data": {
+          "entry_id": "01KJVE6WRT3W8S56MJW2QSGSFT"
+        }
+      },
+      {
+        "action": "notify.mobile_app_caleb_s_phone",
+        "data": {
+          "title": "💡 Cync reconnected",
+          "message": "Cync lights hadn't updated in 6+ hours, so Home Assistant reloaded the Cync integration. If they still don't respond, reload it manually in Settings → Devices & services → Cync.",
+          "data": {
+            "tag": "cync_watchdog"
+          }
+        }
+      }
+    ],
+    "mode": "single"
   }
 }
