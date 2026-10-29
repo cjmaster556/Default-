@@ -3811,5 +3811,87 @@
       }
     ],
     "mode": "single"
+  },
+  "1738428018879@pre-gps-debounce": {
+    "id": "1738428018879",
+    "alias": "Coming Home",
+    "description": "When Caleb arrives: motion detection off on 5 cameras, 'Caleb is home' on the Living Room speaker, Lamp Room on. Arrival counts only if the phone was away for at least 5 minutes (ignores GPS glitches that briefly put it outside the home zone).",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": [
+          "device_tracker.caleb_s_phone_2"
+        ],
+        "from": "not_home",
+        "to": "home"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "template",
+        "value_template": "{{ trigger.from_state is not none and (now() - trigger.from_state.last_changed).total_seconds() > 300 }}"
+      }
+    ],
+    "actions": [
+      {
+        "action": "script.turn_off_cameras",
+        "data": {}
+      },
+      {
+        "action": "tts.speak",
+        "target": {
+          "entity_id": "tts.google_translate_en_com"
+        },
+        "data": {
+          "media_player_entity_id": "media_player.nestmini5941",
+          "message": "Caleb is home"
+        }
+      },
+      {
+        "action": "light.turn_on",
+        "metadata": {},
+        "target": {
+          "entity_id": "light.lamp_room"
+        },
+        "data": {}
+      }
+    ],
+    "mode": "single"
+  },
+  "1792949709809@pre-gps-debounce": {
+    "id": "1792949709809",
+    "alias": "Arriving home after dark",
+    "description": "When Caleb or Destiny arrives home after sunset, turn on the lamp (only the lamp). Arrival counts only if the phone was away for at least 5 minutes (ignores GPS glitches that briefly put it outside the home zone).",
+    "triggers": [
+      {
+        "trigger": "state",
+        "entity_id": [
+          "device_tracker.caleb_s_phone_2",
+          "device_tracker.iphone"
+        ],
+        "from": "not_home",
+        "to": "home"
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "state",
+        "entity_id": "sun.sun",
+        "state": "below_horizon"
+      },
+      {
+        "condition": "template",
+        "value_template": "{{ trigger.from_state is not none and (now() - trigger.from_state.last_changed).total_seconds() > 300 }}"
+      }
+    ],
+    "actions": [
+      {
+        "action": "light.turn_on",
+        "target": {
+          "entity_id": "light.living_room_lamp"
+        }
+      }
+    ],
+    "mode": "single"
   }
 }
