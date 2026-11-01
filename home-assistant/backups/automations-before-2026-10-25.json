@@ -3893,5 +3893,51 @@
       }
     ],
     "mode": "single"
+  },
+  "1792976042557@pre-statistics": {
+    "id": "1792976042557",
+    "alias": "On my way home announcement",
+    "description": "Announce Caleb is on his way home at most once every 2 hours: Google Maps navigating, Maps' arrival time within 3 min of the Waze drive time home, and his distance from home shrinking (trend). Living room speaker + Destiny's iPhone.",
+    "triggers": [
+      {
+        "trigger": "template",
+        "value_template": "{%- set s = states.sensor.caleb_s_phone_last_notification_2 -%}\n{%- if s is not none and s.attributes.get('package') == 'com.google.android.apps.maps' and s.attributes.get('category') == 'navigation' and (now() - s.last_updated).total_seconds() < 600 and not is_state('device_tracker.caleb_s_phone_2', 'home') -%}\n{%- set f = (s.attributes.get('android.subText', '') | string) | regex_findall('Arrive (\\\\d{1,2}:\\\\d{2} [AP]M)') -%}\n{%- if f -%}\n{%- set t = strptime(f[0], '%I:%M %p') -%}\n{%- set mins = (as_timestamp(today_at('%02d:%02d' | format(t.hour, t.minute))) - now().timestamp()) / 60 -%}\n{%- set mins = mins + 1440 if mins < -60 else mins -%}\n{{ 0 < mins < 120 and (states('sensor.waze_caleb_to_home') | float(999) - mins) | abs <= 3 and is_state('binary_sensor.caleb_getting_closer_to_home', 'on') }}\n{%- else -%}false{%- endif -%}\n{%- else -%}false{%- endif -%}\n",
+        "for": {
+          "seconds": 45
+        }
+      }
+    ],
+    "conditions": [
+      {
+        "condition": "template",
+        "value_template": "{{ this.attributes.last_triggered is none or (now() - this.attributes.last_triggered).total_seconds() > 7200 }}"
+      }
+    ],
+    "actions": [
+      {
+        "variables": {
+          "eta_text": "{%- set s = states.sensor.caleb_s_phone_last_notification_2 -%}\n{%- set f = (s.attributes.get('android.subText', '') | string) | regex_findall('Arrive (\\\\d{1,2}:\\\\d{2} [AP]M)') -%}\n{%- if f -%}{%- set t = strptime(f[0], '%I:%M %p') -%}{%- set mins = ((as_timestamp(today_at('%02d:%02d' | format(t.hour, t.minute))) - now().timestamp()) / 60) | round(0) | int -%}{%- if 0 < mins < 120 %} About {{ mins }} minutes away.{% endif -%}{%- endif -%}\n"
+        }
+      },
+      {
+        "action": "tts.speak",
+        "target": {
+          "entity_id": "tts.google_translate_en_com"
+        },
+        "data": {
+          "media_player_entity_id": "media_player.nestmini5941",
+          "message": "Caleb is on his way home.{{ eta_text }}"
+        }
+      },
+      {
+        "action": "notify.mobile_app_iphone",
+        "data": {
+          "title": "🚗 Caleb's on his way",
+          "message": "Caleb is on his way home.{{ eta_text }}"
+        }
+      }
+    ],
+    "mode": "single",
+    "max_exceeded": "silent"
   }
 }
