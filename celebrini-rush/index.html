@@ -83,6 +83,47 @@
   .stat .v { font-size: 28px; font-weight: 900; font-variant-numeric: tabular-nums; }
   .stat .l { font-size: 11px; letter-spacing: 2px; opacity: .7; font-weight: 700; }
   .newbest { color: var(--orange); font-weight: 900; letter-spacing: 3px; font-size: 14px; min-height: 18px; }
+  .who {
+    display: inline-flex; align-items: center; gap: 10px; margin: 0 0 16px; padding: 8px 8px 8px 14px;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15); border-radius: 999px;
+    font-size: 15px; cursor: pointer; color: #fff; font: inherit;
+  }
+  .who b { font-weight: 900; }
+  .who .chg { background: #00a3b4; color: #04212a; font-weight: 900; font-size: 12px; letter-spacing: 1px; padding: 6px 10px; border-radius: 999px; }
+  .ghost {
+    appearance: none; background: none; border: 1px solid rgba(255,255,255,.3); color: #fff; font: inherit;
+    font-weight: 800; letter-spacing: 1px; padding: 10px 20px; border-radius: 999px; cursor: pointer; margin-top: 14px;
+  }
+  #pickScreen { align-items: stretch; padding: 0; }
+  .pick { width: 100%; max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; height: 100%; }
+  .pick header { padding: calc(env(safe-area-inset-top) + 16px) 16px 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .pick header h2 { margin: 0; font-size: 26px; font-weight: 900; font-style: italic; text-transform: uppercase; }
+  .pick .tabs { display: flex; gap: 8px; padding: 0 16px 10px; }
+  .pick .tab {
+    appearance: none; font: inherit; font-weight: 800; font-size: 14px; color: #fff; cursor: pointer;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15); border-radius: 999px; padding: 8px 14px;
+  }
+  .pick .tab[aria-selected="true"] { background: #fff; color: var(--ink); }
+  .grid {
+    flex: 1; overflow-y: auto; padding: 4px 16px calc(env(safe-area-inset-bottom) + 20px);
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; align-content: start;
+    touch-action: pan-y;
+  }
+  .card-p {
+    appearance: none; font: inherit; color: #fff; cursor: pointer; text-align: center;
+    background: rgba(255,255,255,.06); border: 2px solid rgba(255,255,255,.1); border-radius: 16px; padding: 12px 6px 10px;
+  }
+  .card-p[aria-pressed="true"] { border-color: #3fd0e0; background: rgba(0,163,180,.22); }
+  .jersey {
+    width: 64px; height: 58px; margin: 0 auto 8px; background: #00788a; display: grid; place-items: center;
+    clip-path: polygon(30% 0, 70% 0, 100% 18%, 88% 42%, 80% 36%, 80% 100%, 20% 100%, 20% 36%, 12% 42%, 0 18%);
+    font-weight: 900; font-size: 22px; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000;
+    border-bottom: 5px solid #f58025; padding-top: 6px;
+  }
+  .jersey.g { background: linear-gradient(180deg, #00788a 0 60%, #f4f6f8 60%); }
+  .card-p .ln { font-weight: 900; font-size: 13px; letter-spacing: .5px; text-transform: uppercase; }
+  .card-p .fn { font-size: 11px; opacity: .7; }
+  .card-p .ir { font-size: 10px; color: #ffb27a; font-weight: 800; letter-spacing: 1px; }
   .toast {
     position: fixed; top: 30%; left: 0; right: 0; text-align: center; font-weight: 900; font-size: 26px;
     font-style: italic; color: #fff; text-shadow: 0 3px 0 var(--teal-deep); pointer-events: none;
@@ -114,6 +155,7 @@
     <div class="kicker">THE FROZEN CANAL</div>
     <h1>Celebrini<br>Rush <span class="num">71</span></h1>
     <p class="tag">Skate as far as you can. Dodge the nets, duck the banners, steer around the ice machines, and grab every puck.</p>
+    <button class="who" id="whoBtn" type="button">Playing as <b id="whoName">#71 Celebrini</b> <span class="chg">CHANGE</span></button><br>
     <button class="play" id="playBtn">PLAY</button>
     <div class="controls">
       <div><b>Swipe ← →</b> / arrows<br>change lanes</div>
@@ -144,7 +186,23 @@
     </div>
     <div class="newbest" id="newBest"></div>
     <p></p>
-    <button class="play" id="againBtn">PLAY AGAIN</button>
+    <button class="play" id="againBtn">PLAY AGAIN</button><br>
+    <button class="ghost" id="swapBtn" type="button">Switch player</button>
+  </div>
+</div>
+
+<div class="overlay" id="pickScreen" hidden>
+  <div class="pick">
+    <header>
+      <h2>Pick your player</h2>
+      <button class="ghost" id="pickDone" type="button" style="margin:0">Done</button>
+    </header>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-pos="F" aria-selected="true">Forwards</button>
+      <button class="tab" role="tab" data-pos="D" aria-selected="false">Defense</button>
+      <button class="tab" role="tab" data-pos="G" aria-selected="false">Goalies</button>
+    </div>
+    <div class="grid" id="grid"></div>
   </div>
 </div>
 
@@ -225,6 +283,51 @@
   const P = { lane: 1, x: 0, y: 0, vy: 0, slide: 0, phase: 0, lastStumble: -99, stumble: 0, crashT: 0, dead: false };
   const powers = { double: 0, magnet: 0 };
   let best = store.get('cr_best', 0);
+
+  // ---------- Roster (2026-27, as of Nov 2026) ----------
+  const ROSTER = [
+    ['Macklin', 'Celebrini', 71, 'C'], ['Ty', 'Dellandrea', 10, 'C'], ['Barclay', 'Goodrow', 23, 'C'],
+    ['Michael', 'Misa', 77, 'C'], ['Zack', 'Ostapchuk', 63, 'C'], ['Will', 'Smith', 2, 'C'],
+    ['Tyler', 'Toffoli', 73, 'C'], ['Alexander', 'Wennberg', 21, 'C'],
+    ['Igor', 'Chernyshov', 92, 'LW'], ['Mason', 'Marchment', 27, 'LW'], ['Quentin', 'Musty', 13, 'LW'],
+    ['Kiefer', 'Sherwood', 44, 'LW'], ['Ivar', 'Stenberg', 41, 'LW'],
+    ['Adam', 'Gaudette', 81, 'RW'], ['Patrick', 'Giles', 54, 'RW'], ['Collin', 'Graf', 51, 'RW'],
+    ['Brett', 'Leason', 17, 'RW'],
+    ['Nolan', 'Allan', 5, 'D'], ['Sam', 'Dickinson', 6, 'D'], ['Michael', 'Fisher', 43, 'D'],
+    ['Libor', 'Hajek', 24, 'D'], ['Mattias', 'Havelid', 25, 'D'], ['Michael', 'Kesselring', 7, 'D'],
+    ['Darnell', 'Nurse', 25, 'D'], ['Dmitry', 'Orlov', 9, 'D'], ['Eric', 'Pohlkamp', 48, 'D'],
+    ['Jacob', 'Trouba', 65, 'D'],
+    ['Yaroslav', 'Askarov', 30, 'G'], ['Kyle', 'Keyser', 85, 'G'], ['Alex', 'Nedeljkovic', 33, 'G']
+  ].map(([first, last, num, pos]) => ({ first, last, num, pos, group: pos === 'D' || pos === 'G' ? pos : 'F' }));
+
+  let hero = ROSTER.find(r => r.last === store.get('cr_player', 'Celebrini')) || ROSTER[0];
+  let pickTab = hero.group;
+
+  function updateWho() { $('whoName').textContent = `#${hero.num} ${hero.last}`; }
+  function renderGrid() {
+    document.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-selected', t.dataset.pos === pickTab));
+    $('grid').innerHTML = ROSTER.filter(r => r.group === pickTab).map(r => `
+      <button class="card-p" type="button" data-last="${r.last}" aria-pressed="${r === hero}">
+        <div class="jersey${r.pos === 'G' ? ' g' : ''}">${r.num}</div>
+        <div class="ln">${r.last}</div><div class="fn">${r.first} · ${r.pos}</div>
+      </button>`).join('');
+  }
+  let pickReturn = 'startScreen';
+  function openPicker(from) {
+    pickReturn = from; pickTab = hero.group; renderGrid();
+    $(from).hidden = true; $('pickScreen').hidden = false;
+  }
+  function closePicker() { $('pickScreen').hidden = true; $(pickReturn).hidden = false; }
+  document.querySelectorAll('.tab').forEach(t => t.onclick = () => { pickTab = t.dataset.pos; renderGrid(); });
+  $('grid').addEventListener('click', e => {
+    const c = e.target.closest('.card-p'); if (!c) return;
+    hero = ROSTER.find(r => r.last === c.dataset.last); store.set('cr_player', hero.last);
+    updateWho(); renderGrid(); beep(880, 0.08, 'triangle', 0.07);
+  });
+  $('whoBtn').onclick = () => openPicker('startScreen');
+  $('swapBtn').onclick = () => openPicker('overScreen');
+  $('pickDone').onclick = closePicker;
+  updateWho();
 
   function laneX(l) { return (l - 1) * LANE_W; }
 
@@ -356,9 +459,9 @@
 
   function startGame() {
     reset(); S.mode = 'play';
-    $('startScreen').hidden = true; $('overScreen').hidden = true; $('pauseScreen').hidden = true;
+    $('startScreen').hidden = true; $('overScreen').hidden = true; $('pauseScreen').hidden = true; $('pickScreen').hidden = true;
     $('hud').hidden = false; $('pauseBtn').hidden = false;
-    toast('Go, Macklin!');
+    toast(`Go, ${hero.first}!`);
   }
   function togglePause() {
     if (S.mode === 'play') { S.mode = 'paused'; $('pauseScreen').hidden = false; }
@@ -769,10 +872,17 @@
     const stride = (S.mode === 'paused' ? 0 : 1) * (1 - tuck);
     const sway = sn * 2.5 * stride;
 
+    const G = hero.pos === 'G';
     // stick (behind right leg)
     const hx = 22 + sway, hy = -58;
-    limb(hx, hy, 38 + sway, -3 + tuck * -10, 3.2, '#1a1a1a');
-    limb(38 + sway, -3 + tuck * -10, 51 + sway, -1 + tuck * -10, 4.5, '#f1f1f1');
+    if (G) {
+      limb(hx, hy, 34 + sway, -16 + tuck * -10, 3.4, '#1a1a1a');
+      limb(34 + sway, -16 + tuck * -10, 38 + sway, -3 + tuck * -10, 6.5, '#1a1a1a');
+      limb(38 + sway, -3 + tuck * -10, 53 + sway, -1 + tuck * -10, 6, '#f1f1f1');
+    } else {
+      limb(hx, hy, 38 + sway, -3 + tuck * -10, 3.2, '#1a1a1a');
+      limb(38 + sway, -3 + tuck * -10, 51 + sway, -1 + tuck * -10, 4.5, '#f1f1f1');
+    }
 
     // legs
     const legs = [
@@ -782,10 +892,19 @@
     for (const L of legs) {
       const hipY = -46, footY = L.fy - tuck * 16 - 9;
       const hX = L.hipX + sway, fX = L.fx + sway * 0.3;
-      limb(hX, hipY, fX, footY, 11, '#00788a');
-      seg(hX, hipY, fX, footY, 0.4, 0.55, 11.5, '#ffffff');
-      seg(hX, hipY, fX, footY, 0.45, 0.5, 11.6, '#0b0b0b');
-      seg(hX, hipY, fX, footY, 0.6, 0.66, 11.5, '#f58025');
+      if (G) {
+        // goalie leg pads
+        limb(hX, hipY + 4, fX, footY + 2, 17, '#f4f6f8');
+        seg(hX, hipY + 4, fX, footY + 2, 0.22, 0.3, 17.4, '#00788a');
+        seg(hX, hipY + 4, fX, footY + 2, 0.5, 0.56, 17.4, '#0b0b0b');
+        seg(hX, hipY + 4, fX, footY + 2, 0.72, 0.8, 17.4, '#00788a');
+        seg(hX, hipY + 4, fX, footY + 2, 0.56, 0.6, 17.4, '#f58025');
+      } else {
+        limb(hX, hipY, fX, footY, 11, '#00788a');
+        seg(hX, hipY, fX, footY, 0.4, 0.55, 11.5, '#ffffff');
+        seg(hX, hipY, fX, footY, 0.45, 0.5, 11.6, '#0b0b0b');
+        seg(hX, hipY, fX, footY, 0.6, 0.66, 11.5, '#f58025');
+      }
       // skate
       ctx.fillStyle = '#111';
       ctx.beginPath(); ctx.roundRect(fX - 6.5, footY - 2, 13, 10, 3); ctx.fill();
@@ -808,9 +927,16 @@
     limb(21 + sway, -84, 27 + sway, -71, 9, '#00788a');
     limb(27 + sway, -71, hx, hy, 8.5, '#00788a');
     seg(27 + sway, -71, hx, hy, 0.3, 0.5, 8.8, '#fff');
-    ctx.fillStyle = '#121418';
-    ctx.beginPath(); ctx.arc(-22 + sway + armSwing, -57, 5.5, 0, 7); ctx.fill();
-    ctx.beginPath(); ctx.arc(hx, hy + 1, 5.5, 0, 7); ctx.fill();
+    if (G) {
+      // catching glove + blocker
+      ctx.fillStyle = '#f4f6f8'; ctx.strokeStyle = '#00788a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(-23 + sway + armSwing, -57, 9, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.roundRect(hx - 6, hy - 8, 13, 16, 2.5); ctx.fill(); ctx.stroke();
+    } else {
+      ctx.fillStyle = '#121418';
+      ctx.beginPath(); ctx.arc(-22 + sway + armSwing, -57, 5.5, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(hx, hy + 1, 5.5, 0, 7); ctx.fill();
+    }
 
     // jersey torso
     ctx.save();
@@ -828,22 +954,37 @@
 
     ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = '#fff';
+    const nm = hero.last.toUpperCase(), num = String(hero.num);
     ctx.font = '800 6.4px system-ui, sans-serif';
-    ctx.fillText('CELEBRINI', sway, -79);
+    const nw = ctx.measureText(nm).width;
+    if (nw > 36) ctx.font = `800 ${(6.4 * 36 / nw).toFixed(2)}px system-ui, sans-serif`;
+    ctx.fillText(nm, sway, -79);
     ctx.font = '900 19px system-ui, sans-serif';
     ctx.lineWidth = 2.4; ctx.strokeStyle = '#0b0b0b'; ctx.lineJoin = 'round';
-    ctx.strokeText('71', sway, -62.5);
-    ctx.fillText('71', sway, -62.5);
+    ctx.strokeText(num, sway, -62.5);
+    ctx.fillText(num, sway, -62.5);
 
     // neck, hair, helmet
     ctx.fillStyle = '#e2b08c'; ctx.fillRect(-4.5 + sway, -94, 9, 7);
-    ctx.fillStyle = '#4a2f1f';
-    ctx.beginPath(); ctx.ellipse(sway, -93, 9.5, 4, 0, 0, Math.PI); ctx.fill();
-    ctx.fillStyle = '#111317';
-    ctx.beginPath(); ctx.ellipse(sway, -101, 11.5, 11, 0, 0, 7); ctx.fill();
-    ctx.fillStyle = '#2a2e36';
-    ctx.beginPath(); ctx.ellipse(sway - 3, -106, 4, 2.5, -0.4, 0, 7); ctx.fill();
-    ctx.fillStyle = '#00a3b4'; ctx.font = '900 5px system-ui, sans-serif'; ctx.fillText('71', sway, -95.5);
+    if (G) {
+      // goalie mask from behind: painted shell + backplate
+      ctx.fillStyle = '#e9f1f4';
+      ctx.beginPath(); ctx.ellipse(sway, -101, 12.5, 12, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#00a3b4';
+      ctx.beginPath(); ctx.ellipse(sway, -103, 12.5, 5, 0, Math.PI, 0); ctx.fill();
+      ctx.fillStyle = '#f58025'; ctx.fillRect(-1.5 + sway, -113, 3, 12);
+      ctx.fillStyle = '#121418';
+      ctx.beginPath(); ctx.roundRect(-7 + sway, -98, 14, 8, 3); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '900 5px system-ui, sans-serif'; ctx.fillText(num, sway, -92.2);
+    } else {
+      ctx.fillStyle = '#4a2f1f';
+      ctx.beginPath(); ctx.ellipse(sway, -93, 9.5, 4, 0, 0, Math.PI); ctx.fill();
+      ctx.fillStyle = '#111317';
+      ctx.beginPath(); ctx.ellipse(sway, -101, 11.5, 11, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#2a2e36';
+      ctx.beginPath(); ctx.ellipse(sway - 3, -106, 4, 2.5, -0.4, 0, 7); ctx.fill();
+      ctx.fillStyle = '#00a3b4'; ctx.font = '900 5px system-ui, sans-serif'; ctx.fillText(num, sway, -95.5);
+    }
 
     ctx.restore();
   }
