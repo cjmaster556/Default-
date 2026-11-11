@@ -46,3 +46,13 @@ CREATE TABLE IF NOT EXISTS gamex (
   x TEXT NOT NULL DEFAULT '{}',
   updated INTEGER NOT NULL
 );
+
+-- Sharks Rush game: each player name's best run, shared between phones.
+CREATE TABLE IF NOT EXISTS rush_scores (
+  key TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  score INTEGER NOT NULL,
+  pucks INTEGER NOT NULL DEFAULT 0,
+  player TEXT NOT NULL DEFAULT '',
+  updated INTEGER NOT NULL
+);

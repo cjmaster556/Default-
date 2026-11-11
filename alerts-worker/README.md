@@ -30,3 +30,5 @@ you follow scores, or when its game starts or ends, even with the app closed.
 - `POST /unsubscribe`: `{ endpoint }`
 - `POST /test`: `{ endpoint }`, sends a test alert
 - `GET /logo?src=`: an espncdn.com team logo, served so the app can draw it into share pictures
+- `GET /rush/scores`: the Sharks Rush leaderboard (top 25, best run per name)
+- `POST /rush/score`: `{ name, score, pucks, player }`; keeps the higher of the new and saved score for that name, returns the leaderboard

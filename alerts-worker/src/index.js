@@ -75,6 +75,7 @@ async function route(request, env) {
     return json(row ? JSON.parse(row.v) : []);
   }
   if (request.method === "GET" && url.pathname === "/logo") return logoImage(url.searchParams.get("src"));
+  if (request.method === "GET" && url.pathname === "/rush/scores") return rushScores(env);
   if (request.method !== "POST") return json({ error: "Not found" }, 404);
 
   const body = await request.json();
@@ -84,6 +85,7 @@ async function route(request, env) {
     return json({ ok: true });
   }
   if (url.pathname === "/test") return sendTest(env, body);
+  if (url.pathname === "/rush/score") return rushSubmit(env, body);
   if (url.pathname === "/diag") {
     // Phones report how drawing the notification picture went; keep the latest few.
     const row = await env.DB.prepare("SELECT v FROM config WHERE k = 'diag'").first();
@@ -93,6 +95,34 @@ async function route(request, env) {
     return json({ ok: true });
   }
   return json({ error: "Not found" }, 404);
+}
+
+// ---------- Sharks Rush leaderboard ----------
+// Shared high scores for the Sharks Rush game (celebrini-rush/): each name keeps its best run.
+
+const RUSH_MAX_SCORE = 5_000_000;
+
+async function rushScores(env) {
+  const { results } = await env.DB.prepare(
+    "SELECT name, score, pucks, player, updated FROM rush_scores ORDER BY score DESC, updated ASC LIMIT 25"
+  ).all();
+  return json({ scores: results || [] }, 200, { "Cache-Control": "no-store" });
+}
+
+async function rushSubmit(env, body) {
+  const name = String(body?.name ?? "").replace(/[\u0000-\u001f<>]/g, "").replace(/\s+/g, " ").trim().slice(0, 16);
+  const score = Math.floor(Number(body?.score));
+  const pucks = Math.max(0, Math.min(100000, Math.floor(Number(body?.pucks) || 0)));
+  const player = String(body?.player ?? "").replace(/[^\p{L}\p{N} #.'-]/gu, "").trim().slice(0, 24);
+  if (!name) throw new Error("A name is needed");
+  if (!Number.isFinite(score) || score < 0 || score > RUSH_MAX_SCORE) throw new Error("That score doesn't look right");
+  await env.DB.prepare(
+    `INSERT INTO rush_scores (key, name, score, pucks, player, updated) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET name = excluded.name, score = excluded.score, pucks = excluded.pucks,
+       player = excluded.player, updated = excluded.updated
+     WHERE excluded.score > rush_scores.score`
+  ).bind(name.toLowerCase(), name, score, pucks, player, Date.now()).run();
+  return rushScores(env);
 }
 
 async function forget(env, endpoint) {
