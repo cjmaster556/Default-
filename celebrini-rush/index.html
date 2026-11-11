@@ -82,6 +82,15 @@
     background: #00a3b4; color: #04212a; cursor: pointer;
   }
   .me-line { font-size: 14px; opacity: .85; margin: 0 0 14px; }
+  .rival { margin: 0 0 14px; display: grid; gap: 8px; }
+  .rival:empty { display: none; }
+  .rival div {
+    padding: 10px 14px; border-radius: 14px; font-weight: 800; font-size: 15px; line-height: 1.3;
+    background: linear-gradient(135deg, rgba(245,128,37,.95), rgba(214,70,40,.95)); color: #fff;
+    box-shadow: 0 6px 20px rgba(245,128,37,.3); animation: pop .35s ease-out;
+  }
+  .rival div.win { background: linear-gradient(135deg, rgba(0,163,180,.95), rgba(0,109,122,.95)); box-shadow: 0 6px 20px rgba(0,163,180,.3); }
+  @keyframes pop { from { transform: scale(.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   .link { appearance: none; background: none; border: 0; color: #7fe3ee; font: inherit; font-weight: 800; cursor: pointer; text-decoration: underline; padding: 0 4px; }
   .kicker { font-size: 13px; letter-spacing: 4px; color: #7fe3ee; font-weight: 800; }
   h1 {
@@ -184,6 +193,7 @@
     <h1>Sharks<br>Rush <span class="num" id="titleNum">71</span></h1>
     <p class="tag">Skate as far as you can. Dodge the nets, duck the banners, steer around the ice machines, and grab every puck.</p>
     <button class="who" id="whoBtn" type="button">Playing as <b id="whoName">#71 Celebrini</b> <span class="chg">CHANGE</span></button><br>
+    <div class="rival" id="rivalStart"></div>
     <button class="play" id="playBtn">PLAY</button><br>
     <button class="ghost" id="boardBtn" type="button">🏆 Leaderboard</button>
     <div class="controls">
@@ -214,6 +224,7 @@
       <div class="stat"><div class="v" id="finalBest">0</div><div class="l">BEST</div></div>
     </div>
     <div class="newbest" id="newBest"></div>
+    <div class="rival" id="rivalOver"></div>
     <form class="namebox" id="overName" hidden>
       <label for="overNameInput">Put your name on the leaderboard</label>
       <div><input id="overNameInput" maxlength="16" autocomplete="nickname" placeholder="Your name" enterkeyhint="done"><button type="submit">Save</button></div>
@@ -230,6 +241,7 @@
     <div class="kicker">EVERY PHONE</div>
     <h1 style="font-size:44px">Leaderboard</h1>
     <p class="me-line" id="meLine"></p>
+    <div class="rival" id="rivalBoard"></div>
     <form class="namebox" id="boardName" hidden>
       <label for="boardNameInput">Your name on the leaderboard</label>
       <div><input id="boardNameInput" maxlength="16" autocomplete="nickname" placeholder="Your name" enterkeyhint="done"><button type="submit">Save</button></div>
@@ -414,13 +426,55 @@
     if (me && mine >= limit) { box.append(el('div', 'gap', '⋯')); box.append(row(scores[mine], mine)); }
   }
 
-  async function loadBoard(box, limit, submit) {
+  // Compare a fresh board with the last one this phone saw, to say who passed whom.
+  function rivalNews(scores) {
+    const me = myName.toLowerCase();
+    const prev = store.get('cr_lastBoard', null);
+    store.set('cr_lastBoard', scores.map(s => ({ name: s.name, score: s.score })));
+    if (!me || !prev) return [];
+    const low = s => s.name.toLowerCase();
+    const now = scores.findIndex(s => low(s) === me), before = prev.findIndex(s => low(s) === me);
+    if (now < 0 || before < 0) return [];
+    const aboveNow = new Set(scores.slice(0, now).map(low));
+    const aboveBefore = new Set(prev.slice(0, before).map(low));
+    const passedMe = scores.slice(0, now).filter(s => !aboveBefore.has(low(s)));
+    const iPassed = prev.slice(0, before).filter(s => !aboveNow.has(low(s)) && scores.some(x => low(x) === low(s)));
+    const list = names => names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+    const out = [];
+    if (iPassed.length) {
+      out.push({ win: true, text: now === 0
+        ? `👑 You took 1st place from ${iPassed[0].name}!`
+        : `🏒 You passed ${list(iPassed.map(s => s.name))}! You're #${now + 1} now.` });
+    }
+    if (passedMe.length) {
+      const top = passedMe[0], n = Number(top.score).toLocaleString();
+      out.push({ win: false, text: before === 0
+        ? `🚨 ${top.name} knocked you out of 1st with ${n}! Can you take it back?`
+        : `🚨 ${list(passedMe.map(s => s.name))} beat your score${passedMe.length === 1 ? ` with ${n}` : ''}! Can you take it back?` });
+    }
+    return out;
+  }
+
+  function showRival(target, news) {
+    if (!target) return;
+    target.replaceChildren(...news.map(m => el('div', m.win ? 'win' : '', m.text)));
+    if (news.some(m => m.win)) beep(1320, 0.18, 'triangle', 0.08);
+  }
+
+  async function checkRivals() {
+    if (!myName) return;
+    try { showRival($('rivalStart'), rivalNews(await api('/rush/scores'))); } catch {}
+  }
+
+  async function loadBoard(box, limit, submit, rivalTarget) {
     box.replaceChildren(el('div', 'msg', 'Loading scores…'));
     try {
       const scores = submit && myName && best > 0
         ? await api('/rush/score', { name: myName, score: best, pucks: bestRun?.pucks || 0, player: bestRun?.player || '' })
         : await api('/rush/scores');
       renderBoard(box, scores, limit);
+      const news = rivalNews(scores);
+      if (rivalTarget && (news.length || rivalTarget !== $('rivalOver'))) showRival(rivalTarget, news);
     } catch {
       box.replaceChildren(el('div', 'msg', "Couldn't reach the leaderboard. Your best is saved on this phone and will be sent next time."));
     }
@@ -447,8 +501,8 @@
       if (!v) { input.focus(); return; }
       myName = v; store.set('cr_name', myName); input.blur();
       form.hidden = true; updateMeLine();
-      loadBoard($('overBoard'), 5, true);
-      if (!$('boardScreen').hidden) loadBoard($('fullBoard'), 25, true);
+      loadBoard($('overBoard'), 5, true, $('rivalOver'));
+      if (!$('boardScreen').hidden) loadBoard($('fullBoard'), 25, true, $('rivalBoard'));
     });
   }
   saveName($('overName'), $('overNameInput'));
@@ -457,9 +511,10 @@
   let boardReturn = 'startScreen';
   function openBoard(from) {
     boardReturn = from; $(from).hidden = true; $('boardScreen').hidden = false;
-    updateMeLine(); loadBoard($('fullBoard'), 25, true);
+    updateMeLine(); $('rivalBoard').replaceChildren(); loadBoard($('fullBoard'), 25, true, $('rivalBoard'));
   }
   $('boardBtn').onclick = () => openBoard('startScreen');
+  checkRivals();
   $('overBoardBtn').onclick = () => openBoard('overScreen');
   $('boardDone').onclick = () => { $('boardScreen').hidden = true; $(boardReturn).hidden = false; if (boardReturn === 'overScreen') loadBoard($('overBoard'), 5, false); };
 
@@ -594,7 +649,7 @@
 
   function startGame() {
     reset(); S.mode = 'play';
-    $('startScreen').hidden = true; $('overScreen').hidden = true; $('pauseScreen').hidden = true; $('pickScreen').hidden = true; $('boardScreen').hidden = true;
+    $('startScreen').hidden = true; $('overScreen').hidden = true; $('pauseScreen').hidden = true; $('pickScreen').hidden = true; $('boardScreen').hidden = true; $('rivalStart').replaceChildren();
     $('hud').hidden = false; $('pauseBtn').hidden = false;
     toast(`Go, ${hero.first}!`);
   }
@@ -621,7 +676,8 @@
     $('overScreen').hidden = false; $('pauseBtn').hidden = true; $('hud').hidden = true;
     showBest();
     $('overName').hidden = !!myName || best <= 0;
-    loadBoard($('overBoard'), 5, true);
+    $('rivalOver').replaceChildren();
+    loadBoard($('overBoard'), 5, true, $('rivalOver'));
   }
 
   // ---------- Update ----------
