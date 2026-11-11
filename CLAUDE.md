@@ -7,6 +7,8 @@ Everything is developed on branch `ccr-c573c5ba-jzz2cp`; GitHub Pages serves tha
 - `alerts-worker/`: Cloudflare Worker for push alerts plus data pass-through. Live at https://scoreline-alerts.cjmaster556.workers.dev
 - `nfl-tracker/`: the first, NFL-only version. Still works; superseded by `scores/`.
 - `chore-tracker/`: unrelated chore app.
+- `celebrini-rush/`: Sharks Rush, a one-file canvas lane-runner game (pick any Sharks player). Live at https://cjmaster556.github.io/Default-/celebrini-rush/
+  Its shared leaderboard uses the Worker's `/rush/scores` and `/rush/score` (table `rush_scores`). Keep the folder name: the link is saved on phones.
 
 The user follows along on an Android phone, sends screenshots, and compares against Apple Sports.
 Keep explanations non-technical.

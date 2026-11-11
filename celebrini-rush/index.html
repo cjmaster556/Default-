@@ -55,7 +55,34 @@
     padding: 16px; background: radial-gradient(ellipse at center, rgba(11,21,48,.55), rgba(11,21,48,.85));
   }
   .overlay[hidden] { display: none; }
-  .card { text-align: center; max-width: 380px; width: 100%; }
+  .overlay { overflow-y: auto; overscroll-behavior: contain; }
+  .card { text-align: center; max-width: 380px; width: 100%; margin: auto; }
+  .board { margin: 4px 0 14px; text-align: left; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; overflow: hidden; }
+  .board.full { max-height: 48vh; overflow-y: auto; }
+  .board .row { display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid rgba(255,255,255,.07); }
+  .board .row:first-child { border-top: 0; }
+  .board .row.me { background: rgba(0,163,180,.28); }
+  .board .rk { font-weight: 900; color: #7fe3ee; font-variant-numeric: tabular-nums; }
+  .board .row:nth-child(1):not(.gap) .rk { color: #ffd166; }
+  .board .nm { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .board .pl { font-size: 11px; opacity: .65; font-weight: 600; }
+  .board .sc { font-weight: 900; font-variant-numeric: tabular-nums; }
+  .board .msg { padding: 14px; font-size: 14px; opacity: .8; text-align: center; }
+  .board .gap { padding: 2px 12px; text-align: center; opacity: .5; display: block; }
+  .namebox { margin: 0 0 14px; text-align: left; }
+  .namebox label { display: block; font-size: 13px; font-weight: 800; margin-bottom: 6px; color: #7fe3ee; }
+  .namebox div { display: flex; gap: 8px; }
+  .namebox input {
+    flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 10px 14px; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.1); color: #fff; outline: none;
+  }
+  .namebox input:focus { border-color: #3fd0e0; }
+  .namebox button {
+    appearance: none; border: 0; font: inherit; font-weight: 900; padding: 10px 18px; border-radius: 999px;
+    background: #00a3b4; color: #04212a; cursor: pointer;
+  }
+  .me-line { font-size: 14px; opacity: .85; margin: 0 0 14px; }
+  .link { appearance: none; background: none; border: 0; color: #7fe3ee; font: inherit; font-weight: 800; cursor: pointer; text-decoration: underline; padding: 0 4px; }
   .kicker { font-size: 13px; letter-spacing: 4px; color: #7fe3ee; font-weight: 800; }
   h1 {
     margin: 6px 0 4px; font-size: clamp(44px, 13vw, 68px); line-height: .92; font-weight: 900;
@@ -157,7 +184,8 @@
     <h1>Sharks<br>Rush <span class="num" id="titleNum">71</span></h1>
     <p class="tag">Skate as far as you can. Dodge the nets, duck the banners, steer around the ice machines, and grab every puck.</p>
     <button class="who" id="whoBtn" type="button">Playing as <b id="whoName">#71 Celebrini</b> <span class="chg">CHANGE</span></button><br>
-    <button class="play" id="playBtn">PLAY</button>
+    <button class="play" id="playBtn">PLAY</button><br>
+    <button class="ghost" id="boardBtn" type="button">🏆 Leaderboard</button>
     <div class="controls">
       <div><b>Swipe ← →</b> / arrows<br>change lanes</div>
       <div><b>Swipe ↑</b> / tap / space<br>jump</div>
@@ -186,9 +214,28 @@
       <div class="stat"><div class="v" id="finalBest">0</div><div class="l">BEST</div></div>
     </div>
     <div class="newbest" id="newBest"></div>
-    <p></p>
+    <form class="namebox" id="overName" hidden>
+      <label for="overNameInput">Put your name on the leaderboard</label>
+      <div><input id="overNameInput" maxlength="16" autocomplete="nickname" placeholder="Your name" enterkeyhint="done"><button type="submit">Save</button></div>
+    </form>
+    <div class="board" id="overBoard"></div>
     <button class="play" id="againBtn">PLAY AGAIN</button><br>
     <button class="ghost" id="swapBtn" type="button">Switch player</button>
+    <button class="ghost" id="overBoardBtn" type="button">🏆 Full board</button>
+  </div>
+</div>
+
+<div class="overlay" id="boardScreen" hidden>
+  <div class="card">
+    <div class="kicker">EVERY PHONE</div>
+    <h1 style="font-size:44px">Leaderboard</h1>
+    <p class="me-line" id="meLine"></p>
+    <form class="namebox" id="boardName" hidden>
+      <label for="boardNameInput">Your name on the leaderboard</label>
+      <div><input id="boardNameInput" maxlength="16" autocomplete="nickname" placeholder="Your name" enterkeyhint="done"><button type="submit">Save</button></div>
+    </form>
+    <div class="board full" id="fullBoard"></div>
+    <button class="play" id="boardDone">BACK</button>
   </div>
 </div>
 
@@ -332,6 +379,90 @@
   $('pickDone').onclick = closePicker;
   updateWho();
 
+  // ---------- Shared leaderboard (lives on the Scoreline alerts server) ----------
+  const SERVER = 'https://scoreline-alerts.cjmaster556.workers.dev';
+  let myName = store.get('cr_name', '');
+  let bestRun = store.get('cr_bestRun', null);
+
+  async function api(path, body) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 8000);
+    try {
+      const res = await fetch(SERVER + path, body
+        ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctl.signal }
+        : { cache: 'no-store', signal: ctl.signal });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+      return data.scores || [];
+    } finally { clearTimeout(timer); }
+  }
+
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  function renderBoard(box, scores, limit) {
+    box.replaceChildren();
+    if (!scores.length) { box.append(el('div', 'msg', 'No scores yet. Be the first!')); return; }
+    const me = myName.toLowerCase();
+    const row = (s, i) => {
+      const r = el('div', 'row' + (s.name.toLowerCase() === me ? ' me' : ''));
+      const who = el('div'); who.append(el('div', 'nm', s.name), el('div', 'pl', s.player || ''));
+      r.append(el('div', 'rk', String(i + 1)), who, el('div', 'sc', Number(s.score).toLocaleString()));
+      return r;
+    };
+    scores.slice(0, limit).forEach((s, i) => box.append(row(s, i)));
+    const mine = scores.findIndex(s => s.name.toLowerCase() === me);
+    if (me && mine >= limit) { box.append(el('div', 'gap', '⋯')); box.append(row(scores[mine], mine)); }
+  }
+
+  async function loadBoard(box, limit, submit) {
+    box.replaceChildren(el('div', 'msg', 'Loading scores…'));
+    try {
+      const scores = submit && myName && best > 0
+        ? await api('/rush/score', { name: myName, score: best, pucks: bestRun?.pucks || 0, player: bestRun?.player || '' })
+        : await api('/rush/scores');
+      renderBoard(box, scores, limit);
+    } catch {
+      box.replaceChildren(el('div', 'msg', "Couldn't reach the leaderboard. Your best is saved on this phone and will be sent next time."));
+    }
+  }
+
+  function updateMeLine() {
+    const line = $('meLine'); line.replaceChildren();
+    if (myName) {
+      line.append('On the board as ', el('b', null, myName), ' ');
+      const b = el('button', 'link', 'Change'); b.type = 'button';
+      b.onclick = () => { $('boardName').hidden = false; $('boardNameInput').value = myName; $('boardNameInput').focus(); };
+      line.append(b);
+      $('boardName').hidden = true;
+    } else {
+      line.textContent = best > 0 ? 'Add your name to put your best score on the board.' : 'Play a game, then add your name to join the board.';
+      $('boardName').hidden = best <= 0;
+    }
+  }
+
+  function saveName(form, input) {
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const v = input.value.replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 16);
+      if (!v) { input.focus(); return; }
+      myName = v; store.set('cr_name', myName); input.blur();
+      form.hidden = true; updateMeLine();
+      loadBoard($('overBoard'), 5, true);
+      if (!$('boardScreen').hidden) loadBoard($('fullBoard'), 25, true);
+    });
+  }
+  saveName($('overName'), $('overNameInput'));
+  saveName($('boardName'), $('boardNameInput'));
+
+  let boardReturn = 'startScreen';
+  function openBoard(from) {
+    boardReturn = from; $(from).hidden = true; $('boardScreen').hidden = false;
+    updateMeLine(); loadBoard($('fullBoard'), 25, true);
+  }
+  $('boardBtn').onclick = () => openBoard('startScreen');
+  $('overBoardBtn').onclick = () => openBoard('overScreen');
+  $('boardDone').onclick = () => { $('boardScreen').hidden = true; $(boardReturn).hidden = false; if (boardReturn === 'overScreen') loadBoard($('overBoard'), 5, false); };
+
   function laneX(l) { return (l - 1) * LANE_W; }
 
   function reset() {
@@ -412,6 +543,7 @@
   }
 
   window.addEventListener('keydown', e => {
+    if (e.target && e.target.closest && e.target.closest('input, textarea')) return;
     const k = e.key;
     if (['ArrowLeft', 'a', 'A'].includes(k)) act('left');
     else if (['ArrowRight', 'd', 'D'].includes(k)) act('right');
@@ -462,7 +594,7 @@
 
   function startGame() {
     reset(); S.mode = 'play';
-    $('startScreen').hidden = true; $('overScreen').hidden = true; $('pauseScreen').hidden = true; $('pickScreen').hidden = true;
+    $('startScreen').hidden = true; $('overScreen').hidden = true; $('pauseScreen').hidden = true; $('pickScreen').hidden = true; $('boardScreen').hidden = true;
     $('hud').hidden = false; $('pauseBtn').hidden = false;
     toast(`Go, ${hero.first}!`);
   }
@@ -478,13 +610,18 @@
     S.mode = 'over';
     const score = Math.floor(S.score);
     const isBest = score > best;
-    if (isBest) { best = score; store.set('cr_best', best); }
+    if (isBest) {
+      best = score; store.set('cr_best', best);
+      bestRun = { pucks: S.pucks, player: `#${hero.num} ${hero.last}` }; store.set('cr_bestRun', bestRun);
+    }
     $('finalScore').textContent = score.toLocaleString();
     $('finalPucks').textContent = S.pucks;
     $('finalBest').textContent = best.toLocaleString();
     $('newBest').textContent = isBest && score > 0 ? '★ NEW PERSONAL BEST ★' : '';
     $('overScreen').hidden = false; $('pauseBtn').hidden = true; $('hud').hidden = true;
     showBest();
+    $('overName').hidden = !!myName || best <= 0;
+    loadBoard($('overBoard'), 5, true);
   }
 
   // ---------- Update ----------
