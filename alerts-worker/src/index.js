@@ -75,7 +75,7 @@ async function route(request, env) {
     return json(row ? JSON.parse(row.v) : []);
   }
   if (request.method === "GET" && url.pathname === "/logo") return logoImage(url.searchParams.get("src"));
-  if (request.method === "GET" && url.pathname === "/rush/scores") return rushScores(env);
+  if (request.method === "GET" && url.pathname === "/rush/scores") return rushScores(env, url.searchParams.get("day"));
   if (request.method !== "POST") return json({ error: "Not found" }, 404);
 
   const body = await request.json();
@@ -102,10 +102,19 @@ async function route(request, env) {
 
 const RUSH_MAX_SCORE = 5_000_000;
 
-async function rushScores(env) {
-  const { results } = await env.DB.prepare(
-    "SELECT name, score, pucks, player, updated FROM rush_scores ORDER BY score DESC, updated ASC LIMIT 25"
-  ).all();
+// A day (YYYY-MM-DD, the phone's own date) picks that day's challenge board instead of the all-time one.
+function rushDay(day) {
+  if (day == null || day === "") return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error("That day doesn't look right");
+  if (Math.abs(Date.parse(day + "T12:00:00Z") - Date.now()) > 2 * 86400000) throw new Error("That challenge is closed");
+  return day;
+}
+
+async function rushScores(env, dayParam) {
+  const day = rushDay(dayParam);
+  const { results } = day
+    ? await env.DB.prepare("SELECT name, score, pucks, player, updated FROM rush_daily WHERE day = ? ORDER BY score DESC, updated ASC LIMIT 25").bind(day).all()
+    : await env.DB.prepare("SELECT name, score, pucks, player, updated FROM rush_scores ORDER BY score DESC, updated ASC LIMIT 25").all();
   return json({ scores: results || [] }, 200, { "Cache-Control": "no-store" });
 }
 
@@ -114,8 +123,21 @@ async function rushSubmit(env, body) {
   const score = Math.floor(Number(body?.score));
   const pucks = Math.max(0, Math.min(100000, Math.floor(Number(body?.pucks) || 0)));
   const player = String(body?.player ?? "").replace(/[^\p{L}\p{N} #.'-]/gu, "").trim().slice(0, 24);
+  const day = rushDay(body?.day);
   if (!name) throw new Error("A name is needed");
   if (!Number.isFinite(score) || score < 0 || score > RUSH_MAX_SCORE) throw new Error("That score doesn't look right");
+  if (day) {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO rush_daily (day, key, name, score, pucks, player, updated) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(day, key) DO UPDATE SET name = excluded.name, score = excluded.score, pucks = excluded.pucks,
+           player = excluded.player, updated = excluded.updated
+         WHERE excluded.score > rush_daily.score`
+      ).bind(day, name.toLowerCase(), name, score, pucks, player, Date.now()),
+      env.DB.prepare("DELETE FROM rush_daily WHERE updated < ?").bind(Date.now() - 30 * 86400000),
+    ]);
+    return rushScores(env, day);
+  }
   await env.DB.prepare(
     `INSERT INTO rush_scores (key, name, score, pucks, player, updated) VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(key) DO UPDATE SET name = excluded.name, score = excluded.score, pucks = excluded.pucks,
