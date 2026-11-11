@@ -48,7 +48,8 @@
     color: #fff; font-size: 18px; display: grid; place-items: center; cursor: pointer;
   }
   #pauseBtn { right: 16px; }
-  #muteBtn { left: 16px; }
+  #muteBtn { left: 16px; z-index: 5; }
+  body:has(#pickScreen:not([hidden])) #muteBtn { display: none; }
 
   .overlay {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -300,26 +301,114 @@
   };
 
   // ---------- Audio ----------
-  let actx = null, muted = store.get('cr_muted', false);
-  function beep(freq, dur = 0.08, type = 'sine', vol = 0.12, slide = 0) {
-    if (muted) return;
+  let actx = null, master = null, noiseBuf = null, wind = null, muted = store.get('cr_muted', false);
+  function audio() {
+    if (actx) return actx;
     try {
-      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-      const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
-      o.type = type; o.frequency.setValueAtTime(freq, t);
-      if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), t + dur);
-      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.02);
-    } catch {}
+      actx = new (window.AudioContext || window.webkitAudioContext)();
+      const comp = actx.createDynamicsCompressor();
+      master = actx.createGain(); master.gain.value = muted ? 0 : 0.9;
+      master.connect(comp).connect(actx.destination);
+      noiseBuf = actx.createBuffer(1, actx.sampleRate * 2, actx.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    } catch { actx = null; }
+    return actx;
   }
+  // Phones only allow sound after a touch; wake the audio up on the first one.
+  const wake = () => { const a = audio(); if (a && a.state === 'suspended') a.resume(); };
+  ['pointerdown', 'touchend', 'keydown'].forEach(ev => window.addEventListener(ev, wake, { passive: true }));
+
+  // A pitched note. o: type, dur, vol, to (end frequency), at (delay), attack
+  function tone(freq, o = {}) {
+    const a = audio(); if (!a || muted) return;
+    const t = a.currentTime + (o.at || 0), dur = o.dur || 0.1, vol = o.vol || 0.1;
+    const osc = a.createOscillator(), g = a.createGain();
+    osc.type = o.type || 'sine'; osc.frequency.setValueAtTime(freq, t);
+    if (o.to) osc.frequency.exponentialRampToValueAtTime(Math.max(30, o.to), t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + (o.attack || 0.005));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g).connect(master); osc.start(t); osc.stop(t + dur + 0.03);
+  }
+  // A burst of filtered noise (scrapes, whooshes, thuds, crowd). o: dur, vol, type, f, to, q, at, attack
+  function hiss(o = {}) {
+    const a = audio(); if (!a || muted) return;
+    const t = a.currentTime + (o.at || 0), dur = o.dur || 0.15, vol = o.vol || 0.1;
+    const src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+    src.buffer = noiseBuf; src.loop = true;
+    f.type = o.type || 'bandpass'; f.Q.value = o.q || 1;
+    f.frequency.setValueAtTime(o.f || 2000, t);
+    if (o.to) f.frequency.exponentialRampToValueAtTime(o.to, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + (o.attack || 0.01));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(g).connect(master);
+    src.start(t, Math.random() * 1.5); src.stop(t + dur + 0.03);
+  }
+  // Referee whistle: two close tones with a pea-rattle wobble.
+  function whistle(at = 0, dur = 0.5, vol = 0.07) {
+    const a = audio(); if (!a || muted) return;
+    const t = a.currentTime + at, g = a.createGain(), lfo = a.createOscillator(), lg = a.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+    g.gain.setValueAtTime(vol, t + dur - 0.06); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    lfo.frequency.value = 38; lg.gain.value = vol * 0.6; lfo.connect(lg).connect(g.gain);
+    for (const f of [2750, 2890]) { const o = a.createOscillator(); o.frequency.value = f; o.connect(g); o.start(t); o.stop(t + dur + 0.02); }
+    g.connect(master); lfo.start(t); lfo.stop(t + dur + 0.02);
+    hiss({ at, dur, vol: vol * 0.35, f: 2800, q: 6 });
+  }
+  // Wind + ice rumble that grows with speed.
+  function setWind(level) {
+    const a = audio(); if (!a) return;
+    if (!wind) {
+      const src = a.createBufferSource(), f = a.createBiquadFilter(); wind = a.createGain();
+      src.buffer = noiseBuf; src.loop = true; f.type = 'bandpass'; f.frequency.value = 500; f.Q.value = 0.4;
+      wind.gain.value = 0; wind.f = f; src.connect(f).connect(wind).connect(master); src.start();
+    }
+    wind.gain.setTargetAtTime(level * 0.05, a.currentTime, 0.15);
+    wind.f.frequency.setTargetAtTime(350 + level * 900, a.currentTime, 0.2);
+  }
+
+  const SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
+  let combo = 0, lastPuck = 0, lastHorn = -9999;
   const sfx = {
-    puck: () => beep(980 + Math.random() * 120, 0.07, 'triangle', 0.08),
-    jump: () => beep(300, 0.18, 'sine', 0.1, 400),
-    slide: () => beep(500, 0.2, 'sawtooth', 0.04, -300),
-    lane: () => beep(700, 0.05, 'sine', 0.04),
-    power: () => { beep(660, 0.1, 'square', 0.06); setTimeout(() => beep(990, 0.15, 'square', 0.06), 90); },
-    stumble: () => beep(160, 0.2, 'square', 0.08, -60),
-    crash: () => { beep(120, 0.5, 'sawtooth', 0.14, -80); beep(1800, 0.4, 'square', 0.04, -200); }
+    puck() {
+      const now = performance.now();
+      combo = now - lastPuck < 700 ? Math.min(combo + 1, SCALE.length - 1) : 0; lastPuck = now;
+      const f = 660 * Math.pow(2, SCALE[combo] / 12);
+      hiss({ dur: 0.03, vol: 0.09, f: 3200, q: 2 });                       // stick-on-puck tick
+      tone(f, { type: 'triangle', dur: 0.16, vol: 0.09 });
+      tone(f * 2, { dur: 0.1, vol: 0.035 });
+    },
+    jump() { hiss({ dur: 0.28, vol: 0.09, f: 500, to: 2600, q: 1.2 }); tone(260, { dur: 0.2, vol: 0.06, to: 620 }); },
+    land() { tone(120, { dur: 0.1, vol: 0.12, to: 60 }); hiss({ dur: 0.16, vol: 0.07, type: 'highpass', f: 2500 }); },
+    slide() { hiss({ dur: 0.6, vol: 0.11, type: 'highpass', f: 4200, to: 1800, attack: 0.03 }); hiss({ dur: 0.5, vol: 0.05, f: 900, q: 0.8 }); },
+    lane() { hiss({ dur: 0.13, vol: 0.08, f: 2400, to: 5200, q: 1.5 }); },
+    stride() { hiss({ dur: 0.14, vol: 0.022, f: 3000, to: 4500, q: 1, attack: 0.03 }); },
+    power() {
+      [523, 659, 784, 1047].forEach((f, i) => tone(f, { type: 'triangle', dur: 0.22, vol: 0.08, at: i * 0.07 }));
+      tone(2093, { dur: 0.4, vol: 0.03, at: 0.28 }); hiss({ dur: 0.4, vol: 0.03, type: 'highpass', f: 6000, at: 0.2 });
+    },
+    stumble() { tone(140, { dur: 0.18, vol: 0.16, to: 55 }); hiss({ dur: 0.2, vol: 0.12, type: 'lowpass', f: 900 }); tone(90, { type: 'square', dur: 0.12, vol: 0.04, at: 0.05 }); },
+    crash() {
+      tone(110, { dur: 0.45, vol: 0.3, to: 38 });                           // body hit
+      hiss({ dur: 0.35, vol: 0.22, type: 'lowpass', f: 1400, to: 200 });    // boards
+      hiss({ dur: 0.5, vol: 0.08, type: 'highpass', f: 3000, at: 0.05 });   // ice spray
+      [0.12, 0.2, 0.31].forEach(at => tone(300 + Math.random() * 200, { type: 'square', dur: 0.04, vol: 0.03, at })); // stick clatter
+      whistle(0.5, 0.55);
+    },
+    start() { whistle(0, 0.28, 0.05); tone(180, { dur: 0.06, vol: 0.12, at: 0.34 }); hiss({ dur: 0.05, vol: 0.1, f: 1800, at: 0.34 }); },
+    ui() { tone(880, { type: 'triangle', dur: 0.07, vol: 0.06 }); hiss({ dur: 0.02, vol: 0.04, f: 4000 }); },
+    // Goal horn and crowd, for a new personal best or passing someone.
+    horn() {
+      const now = performance.now(); if (now - lastHorn < 3000) return; lastHorn = now;
+      [87.3, 110, 130.8, 174.6].forEach(f => {
+        tone(f, { type: 'sawtooth', dur: 1.3, vol: 0.07, attack: 0.04 });
+        tone(f * 1.005, { type: 'sawtooth', dur: 1.3, vol: 0.05, attack: 0.04 });
+      });
+      hiss({ dur: 2.2, vol: 0.08, f: 1100, q: 0.5, attack: 0.5, at: 0.15 });
+      hiss({ dur: 2.0, vol: 0.04, f: 2400, q: 0.7, attack: 0.7, at: 0.3 });
+    }
   };
   function updateMuteBtn() { $('muteBtn').textContent = muted ? '🔇' : '🔊'; }
   updateMuteBtn();
@@ -384,7 +473,7 @@
   $('grid').addEventListener('click', e => {
     const c = e.target.closest('.card-p'); if (!c) return;
     hero = ROSTER.find(r => r.last === c.dataset.last); store.set('cr_player', hero.last);
-    updateWho(); renderGrid(); beep(880, 0.08, 'triangle', 0.07);
+    updateWho(); renderGrid(); sfx.ui();
   });
   $('whoBtn').onclick = () => openPicker('startScreen');
   $('swapBtn').onclick = () => openPicker('overScreen');
@@ -458,7 +547,7 @@
   function showRival(target, news) {
     if (!target) return;
     target.replaceChildren(...news.map(m => el('div', m.win ? 'win' : '', m.text)));
-    if (news.some(m => m.win)) beep(1320, 0.18, 'triangle', 0.08);
+    if (news.some(m => m.win)) sfx.horn();
   }
 
   async function checkRivals() {
@@ -635,7 +724,11 @@
   $('againBtn').onclick = startGame;
   $('resumeBtn').onclick = togglePause;
   $('pauseBtn').onclick = togglePause;
-  $('muteBtn').onclick = () => { muted = !muted; store.set('cr_muted', muted); updateMuteBtn(); };
+  $('muteBtn').onclick = () => {
+    muted = !muted; store.set('cr_muted', muted); updateMuteBtn();
+    if (audio()) master.gain.setTargetAtTime(muted ? 0 : 0.9, actx.currentTime, 0.02);
+    if (!muted) sfx.ui();
+  };
   document.addEventListener('visibilitychange', () => { if (document.hidden && S.mode === 'play') togglePause(); });
 
   let toastTimer = 0;
@@ -651,15 +744,15 @@
     reset(); S.mode = 'play';
     $('startScreen').hidden = true; $('overScreen').hidden = true; $('pauseScreen').hidden = true; $('pickScreen').hidden = true; $('boardScreen').hidden = true; $('rivalStart').replaceChildren();
     $('hud').hidden = false; $('pauseBtn').hidden = false;
-    toast(`Go, ${hero.first}!`);
+    toast(`Go, ${hero.first}!`); sfx.start();
   }
   function togglePause() {
-    if (S.mode === 'play') { S.mode = 'paused'; $('pauseScreen').hidden = false; }
+    if (S.mode === 'play') { S.mode = 'paused'; $('pauseScreen').hidden = false; setWind(0); }
     else if (S.mode === 'paused') { S.mode = 'play'; $('pauseScreen').hidden = true; }
   }
   function crash() {
     if (P.dead) return;
-    P.dead = true; P.crashT = 0; shake = 0.6; sfx.crash();
+    P.dead = true; P.crashT = 0; shake = 0.6; sfx.crash(); setWind(0);
   }
   function gameOver() {
     S.mode = 'over';
@@ -673,6 +766,7 @@
     $('finalPucks').textContent = S.pucks;
     $('finalBest').textContent = best.toLocaleString();
     $('newBest').textContent = isBest && score > 0 ? '★ NEW PERSONAL BEST ★' : '';
+    if (isBest && score > 0) sfx.horn();
     $('overScreen').hidden = false; $('pauseBtn').hidden = true; $('hud').hidden = true;
     showBest();
     $('overName').hidden = !!myName || best <= 0;
@@ -711,11 +805,14 @@
     P.x += (tx - P.x) * Math.min(1, dt * 14);
     if (P.y > 0 || P.vy > 0) {
       P.vy -= 42 * dt; P.y += P.vy * dt;
-      if (P.y <= 0) { P.y = 0; P.vy = 0; }
+      if (P.y <= 0) { P.y = 0; P.vy = 0; sfx.land(); }
     }
     P.slide = Math.max(0, P.slide - dt);
     P.stumble = Math.max(0, P.stumble - dt);
+    const ph0 = P.phase;
     P.phase += dt * (5 + S.speed * 0.22);
+    if (Math.floor(ph0 / Math.PI) !== Math.floor(P.phase / Math.PI) && P.y <= 0.001 && P.slide <= 0) sfx.stride();
+    setWind((S.speed - 12) / 28);
     camX += (P.x * 0.7 - camX) * Math.min(1, dt * 8);
 
     // spawn
