@@ -729,7 +729,7 @@
   function reset() {
     objects = []; nextRowAt = 55; rowCount = 0;
     Object.assign(S, { distance: 0, speed: 17, score: 0, pucks: 0, time: 0 });
-    Object.assign(P, { lane: 1, x: 0, y: 0, vy: 0, slide: 0, lastStumble: -99, stumble: 0, crashT: 0, dead: false, helmet: false, safe: 0 });
+    Object.assign(P, { lane: 1, x: 0, y: 0, vy: 0, slide: 0, lastStumble: -99, stumble: 0, crashT: 0, dead: false, helmet: 0, safe: 0 });
     powers.double = 0; powers.magnet = 0;
     camX = 0;
   }
@@ -880,7 +880,7 @@
     if (S.daily) toast('Daily challenge!');
     else if (headStarts > 0) {
       headStarts--; store.set('cr_headStarts', headStarts);
-      P.helmet = true; powers.magnet = 12; toast('Head start!');
+      P.helmet = 1; powers.magnet = 12; toast('Head start!');
     } else toast(`Go, ${hero.first}!`);
     sfx.start();
   }
@@ -891,8 +891,8 @@
   function crash() {
     if (P.dead || P.safe > 0) return;
     if (P.helmet) {
-      P.helmet = false; P.safe = 1.6; P.lastStumble = -99; shake = 0.45;
-      sfx.stumble(); sfx.power(); toast('Helmet saved you!');
+      P.helmet--; P.safe = 1.6; P.lastStumble = -99; shake = 0.45;
+      sfx.stumble(); sfx.power(); toast(P.helmet ? `Helmet saved you! ${P.helmet} left` : 'Helmet saved you!');
       return;
     }
     P.dead = true; P.crashT = 0; shake = 0.6; sfx.crash(); setWind(0);
@@ -1004,8 +1004,13 @@
         if (Math.abs(z0) < 0.9 && Math.abs(o.x - P.x) < 1.1 && Math.abs(o.y - (P.y + 0.9)) < 1.4) {
           o.taken = true;
           if (o.type === 'puck') { S.pucks++; S.score += 10 * S.mult; sfx.puck(); }
-          else if (o.type === 'helmet') { P.helmet = true; sfx.power(); toast('Helmet on!'); }
-          else { powers[o.type] = 10; sfx.power(); toast(o.type === 'double' ? '2× Score!' : 'Puck Magnet!'); }
+          // Power-ups stack: helmets pile up (to 5) and a second 2× or magnet adds its 10 seconds on top (to 60).
+          else if (o.type === 'helmet') { P.helmet = Math.min(5, P.helmet + 1); sfx.power(); toast(P.helmet > 1 ? `Helmet ×${P.helmet}!` : 'Helmet on!'); }
+          else {
+            const stacked = powers[o.type] > 0;
+            powers[o.type] = Math.min(60, powers[o.type] + 10); sfx.power();
+            toast((o.type === 'double' ? '2× Score' : 'Puck Magnet') + (stacked ? ` +10s!` : '!'));
+          }
         }
         continue;
       }
@@ -1024,7 +1029,7 @@
     let ph = '';
     if (powers.double > 0) ph += `<div class="power">2× ${Math.ceil(powers.double)}s</div>`;
     if (powers.magnet > 0) ph += `<div class="power magnet">MAGNET ${Math.ceil(powers.magnet)}s</div>`;
-    if (P.helmet) ph += '<div class="power helmet">HELMET</div>';
+    if (P.helmet) ph += `<div class="power helmet">HELMET${P.helmet > 1 ? ' ×' + P.helmet : ''}</div>`;
     const pe = $('powers'); if (pe.innerHTML !== ph) pe.innerHTML = ph;
   }
 
@@ -1533,7 +1538,8 @@
 
     if (P.helmet) {   // golden halo: the helmet power-up is on
       ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2.6; ctx.shadowColor = '#ffd166'; ctx.shadowBlur = 10;
-      ctx.beginPath(); ctx.arc(sway, -101, 15.5, 0, 7); ctx.stroke(); ctx.shadowBlur = 0;
+      for (let n = 0; n < P.helmet; n++) { ctx.beginPath(); ctx.arc(sway, -101, 15.5 + n * 3.6, 0, 7); ctx.stroke(); }   // one ring per helmet held
+      ctx.shadowBlur = 0;
     }
     ctx.restore();
   }
