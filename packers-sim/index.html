@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Packers Playoff Simulator</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1><span class="g">G</span> Packers Playoff Simulator</h1>
+    <p class="sub" id="sub"></p>
+  </div>
+</header>
+<main class="wrap">
+  <section class="hero card">
+    <div class="big"><div id="pPlayoff">–</div><label>Make playoffs</label></div>
+    <div class="big"><div id="pDiv">–</div><label>Win NFC North</label></div>
+    <div class="big"><div id="pBye">–</div><label>#1 seed (bye)</label></div>
+    <div class="big"><div id="pWins">–</div><label>Projected wins</label></div>
+  </section>
+
+  <div class="cols">
+    <section class="card">
+      <h2>Packers remaining games</h2>
+      <p class="hint">Lock a result to see how it changes your odds. “Sim” plays the game out using team ratings.</p>
+      <div id="sched"></div>
+      <div class="ctl">
+        <label>Packers strength adjust: <b id="adjV">0</b> Elo
+          <input type="range" id="adj" min="-150" max="150" step="10" value="0"></label>
+        <label>Simulations
+          <select id="sims"><option>5000</option><option selected>20000</option><option>50000</option></select></label>
+        <button id="reset">Reset all</button>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Playoff odds by final record</h2>
+      <p class="hint">Chance of making the playoffs if the Packers finish with X wins (bar = how often that happens).</p>
+      <div id="dist"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Rooting guide</h2>
+    <p class="hint">Games (anywhere in the league) that move Green Bay's playoff odds the most. Swing = odds if the green team wins minus odds if the other team wins.</p>
+    <div id="root"></div>
+  </section>
+
+  <section class="card">
+    <h2>NFC standings &amp; odds</h2>
+    <div class="scroll"><table id="tbl"></table></div>
+    <p class="hint">Record includes ties. “Proj W” is the simulated average. Seed columns show the chance of landing each playoff seed.</p>
+  </section>
+
+  <section class="card small">
+    <h2>How it works</h2>
+    <ul>
+      <li>Schedule and scores come from the nflverse open dataset. Ratings are Elo built from 2021 onward (K=20, margin-of-victory, 25% regression to the mean each offseason, 48-point home edge).</li>
+      <li>Each game: expected margin = Elo gap ÷ 25, with a normal spread of 13.5 points, so every sim also tracks point differential.</li>
+      <li>Seeding: 4 division winners + 3 wild cards per conference. Tiebreakers are simplified: head-to-head, division record (for division ties), conference record, then point differential, then a coin flip. Strength-of-victory/schedule and common-games steps are not modelled, so razor-thin tie scenarios are approximate.</li>
+      <li>It is a model, not a prediction. Injuries (e.g., a QB change) can be approximated with the strength slider, and the rest of the league can be adjusted by locking results.</li>
+    </ul>
+  </section>
+</main>
+<script src="data.js"></script>
+<script src="sim.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
