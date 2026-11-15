@@ -4230,16 +4230,36 @@
     const fileName = isGolf(ev._league) ? `${String(ev.name).replace(/[^\w]+/g, "-")}.png` : `${away?.team?.abbreviation || "away"}-${home?.team?.abbreviation || "home"}.png`;
     shareFile = blob ? new File([blob], fileName, { type: "image/png" }) : null;
     if (blob) $("share-img").src = URL.createObjectURL(blob);
-    $("share-image").hidden = !(shareFile && navigator.canShare?.({ files: [shareFile] }));
-    $("save-image").hidden = !shareFile;
+    // The Android app shares through its own share sheet; the phone's browser needs file sharing support.
+    $("share-image").hidden = !(shareFile && (nativeShare() || navigator.canShare?.({ files: [shareFile] })));
+    $("save-image").hidden = !shareFile || !!nativeShare();
     shareDialog.dataset.key = ev._key;
   });
+
+  // The Android app's share plugins (Share and Filesystem, from the APK): the picture is written to the app's
+  // cache, then its file address goes to the phone's share sheet. Missing in older APKs, so the browser path stays.
+  const nativeShare = () => (window.Capacitor?.isNativePlatform?.() && window.Capacitor?.Plugins?.Share && window.Capacitor?.Plugins?.Filesystem) || null;
+
+  async function shareNativeFile(file, text, url) {
+    const { Filesystem, Share } = window.Capacitor.Plugins;
+    const data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(",")[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const path = `share/${file.name}`;
+    await Filesystem.writeFile({ path, data, directory: "CACHE", recursive: true });
+    const { uri } = await Filesystem.getUri({ path, directory: "CACHE" });
+    await window.Capacitor.Plugins.Share.share({ files: [uri], text, url });
+  }
 
   $("share-image").addEventListener("click", async () => {
     const ev = state.openGame?.event;
     if (!ev || !shareFile) return;
     try {
-      await navigator.share({ files: [shareFile], text: shareText(ev), url: shareURL(ev) });
+      if (nativeShare()) await shareNativeFile(shareFile, shareText(ev), shareURL(ev));
+      else await navigator.share({ files: [shareFile], text: shareText(ev), url: shareURL(ev) });
     } catch {
       /* share sheet dismissed */
     }
