@@ -1004,8 +1004,8 @@
         if (Math.abs(z0) < 0.9 && Math.abs(o.x - P.x) < 1.1 && Math.abs(o.y - (P.y + 0.9)) < 1.4) {
           o.taken = true;
           if (o.type === 'puck') { S.pucks++; S.score += 10 * S.mult; sfx.puck(); }
-          // Power-ups stack: helmets pile up (to 5) and a second 2× or magnet adds its 10 seconds on top (to 60).
-          else if (o.type === 'helmet') { P.helmet = Math.min(5, P.helmet + 1); sfx.power(); toast(P.helmet > 1 ? `Helmet ×${P.helmet}!` : 'Helmet on!'); }
+          // Power-ups stack: helmets pile up (to 3) and a second 2× or magnet adds its 10 seconds on top (to 60).
+          else if (o.type === 'helmet') { P.helmet = Math.min(3, P.helmet + 1); sfx.power(); toast(P.helmet > 1 ? `Helmet ×${P.helmet}!` : 'Helmet on!'); }
           else {
             const stacked = powers[o.type] > 0;
             powers[o.type] = Math.min(60, powers[o.type] + 10); sfx.power();
