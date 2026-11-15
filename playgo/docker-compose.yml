@@ -1,0 +1,20 @@
+services:
+  playgo:
+    build: .
+    container_name: playgo
+    restart: unless-stopped
+    ports:
+      - "${PLAYGO_PORT:-8080}:80"
+    env_file: .env
+    environment:
+      TZ: ${TZ:-UTC}
+    volumes:
+      # Persist user data (playlists, history, progress) and metadata caches
+      - playgo-storage:/var/www/html/storage
+      - playgo-tmdb-cache:/var/www/html/assets/tmdb_cache
+      - playgo-tmdb-runtime:/var/www/html/assets/tmdb_runtime
+
+volumes:
+  playgo-storage:
+  playgo-tmdb-cache:
+  playgo-tmdb-runtime:
